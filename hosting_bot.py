@@ -26,9 +26,9 @@ LOGS_DIR = os.path.join(BASE_DIR, "logs")
 TEMP_DIR = os.path.join(BASE_DIR, "temp")
 DATABASE_PATH = os.path.join(BASE_DIR, "bot_database.db")
 
-# Настройки обязательной подписки
-SUBSCRIPTION_CHANNEL = None  # @username канала
-SUBSCRIPTION_PHOTO = None    # file_id фото
+# Настройки обязательной подписки (админ может менять через панель)
+SUBSCRIPTION_CHANNEL = None  # @username канала (None = отключено)
+SUBSCRIPTION_PHOTO = None    # file_id фото для приглашения
 SUBSCRIPTION_DESC = "📢 Подпишитесь на канал чтобы использовать бота!"
 
 # Тарифы
@@ -448,7 +448,7 @@ def admin_subscription(call):
     if SUBSCRIPTION_CHANNEL:
         text += f"📢 Канал: {SUBSCRIPTION_CHANNEL}\n🖼 Фото: {'Установлено' if SUBSCRIPTION_PHOTO else 'Нет'}\n📝 Описание: {SUBSCRIPTION_DESC}\n"
     else:
-        text += "❌ Не настроено\n\n"
+        text += "❌ Отключено\n\n"
     text += "\nВыберите действие:"
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=admin_subscription_settings(), parse_mode='HTML')
 
@@ -468,7 +468,7 @@ def process_sub_channel(message):
         SUBSCRIPTION_CHANNEL = channel
         bot.send_message(message.chat.id, f"✅ Канал {channel} установлен! Добавьте бота в канал как админа.")
     except:
-        bot.send_message(message.chat.id, "❌ Канал не найден!")
+        bot.send_message(message.chat.id, "❌ Канал не найден! Бот должен быть админом канала.")
 
 @bot.callback_query_handler(func=lambda call: call.data == "set_sub_photo")
 def set_sub_photo(call):
