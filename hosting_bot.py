@@ -1,4 +1,4 @@
-# hosting_bot.py - Хостинг бот (v6.1 - РАССЫЛКА И СБП)
+# hosting_bot.py - Хостинг бот (v6.2 - РАССЫЛКА ИСПРАВЛЕНА)
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
 import os
@@ -11,10 +11,11 @@ import zipfile
 import subprocess
 import signal
 import requests
+import json
 from datetime import datetime, timedelta
 
 TOKEN = "8993679520:AAGFLEg3azqd1UV8H374hQUU8wqLYVhrdSo"
-VERSION = "6.1.0"
+VERSION = "6.2.0"
 ADMIN_IDS = [314148464]
 CRYPTO_TOKEN = "593773:AA2SggSE9MiTxJ6jdir8g7ufY2Cd2Pchvhu"
 CRYPTO_API = "https://pay.crypt.bot/api"
@@ -55,7 +56,7 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 bot_status = "running"
 pending_payments = {}
 crypto_invoices = {}
-broadcast_state = {}  # {admin_id: {"step": "waiting", "type": None}}
+broadcast_state = {}
 
 # ========== БАЗА ДАННЫХ ==========
 def get_db():
@@ -275,6 +276,18 @@ def bot_blocked(call):
         bot.answer_callback_query(call.id, "🔴 Бот остановлен!"); return True
     return False
 
+# ========== ЗАГРУЗКА ДАННЫХ ДЛЯ РАССЫЛКИ (ИСПРАВЛЕНО) ==========
+def load_data():
+    """Получает список всех пользователей из БД"""
+    try:
+        users = get_all_users()
+        result = {"users": {}}
+        for u in users:
+            result["users"][str(u['user_id'])] = u
+        return result
+    except:
+        return {"users": {}}
+
 # ========== БОТ ==========
 bot = telebot.TeleBot(TOKEN)
 upload_states = {}
@@ -393,10 +406,13 @@ def back_to_start(call):
 @bot.callback_query_handler(func=lambda call: call.data == "admin_back")
 def admin_back(call):
     text = f"🚀 <b>Hosting Bot v{VERSION}</b>\n\n👑 Админ\n\n<b>Админ-панель:</b>"
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=admin_panel(), parse_mode='HTML') if call.message.from_user.id in ADMIN_IDS else bot.send_message(call.message.chat.id, text, reply_markup=admin_panel(), parse_mode='HTML')
+    if call.message.from_user.id in ADMIN_IDS:
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=admin_panel(), parse_mode='HTML')
+    else:
+        bot.send_message(call.message.chat.id, text, reply_markup=admin_panel(), parse_mode='HTML')
     bot.answer_callback_query(call.id)
 
-# ========== РАССЫЛКА ==========
+# ========== РАССЫЛКА (ИСПРАВЛЕНО) ==========
 @bot.callback_query_handler(func=lambda call: call.data == "admin_broadcast")
 def admin_broadcast_start(call):
     if call.from_user.id not in ADMIN_IDS: bot.answer_callback_query(call.id, "❌"); return
@@ -415,92 +431,76 @@ def broadcast_choose_type(call):
     if btype == "text":
         bot.edit_message_text("📝 Отправьте текст для рассылки:", call.message.chat.id, call.message.message_id)
     elif btype == "photo":
-        bot.edit_message_text("🖼 Отправьте ФОТО + подпись к нему (отправьте фото с текстом в подписи):", call.message.chat.id, call.message.message_id)
+        bot.edit_message_text("🖼 Отправьте ФОТО + подпись к нему:", call.message.chat.id, call.message.message_id)
     elif btype == "video":
-        bot.edit_message_text("🎥 Отправьте ВИДЕО + подпись к нему (отправьте видео с текстом в подписи):", call.message.chat.id, call.message.message_id)
+        bot.edit_message_text("🎥 Отправьте ВИДЕО + подпись к нему:", call.message.chat.id, call.message.message_id)
     elif btype == "button":
-        msg = bot.edit_message_text("🔗 Отправьте текст и ссылку в формате:\n\nТекст сообщения\nhttps://ссылка.ком\nНазвание кнопки", call.message.chat.id, call.message.message_id)
-        broadcast_state[call.from_user.id]["msg_id"] = call.message.message_id
+        bot.edit_message_text("🔗 Отправьте:\nТекст сообщения\nhttps://ссылка.ком\nНазвание кнопки", call.message.chat.id, call.message.message_id)
 
 @bot.message_handler(func=lambda message: message.from_user.id in ADMIN_IDS and broadcast_state.get(message.from_user.id, {}).get("step") == "waiting_content")
 def broadcast_content(message):
     uid = message.from_user.id
-    state = broadcast_state.get(uid, {})
+    state = broadcast_state.pop(uid, {})
     btype = state.get("type")
     
+    # Загружаем список пользователей из БД
+    data = load_data()
+    users_list = list(data.get("users", {}).keys())
+    total_users = len(users_list)
+    
+    if total_users == 0:
+        bot.send_message(uid, "📢 Нет пользователей для рассылки!")
+        return
+    
+    success = 0
+    
     if btype == "text":
-        # Отправляем текст всем
-        data = load_data()
-        success = 0
-        for user_id in data.get("users", {}):
+        for user_id in users_list:
             try:
                 bot.send_message(int(user_id), message.text, parse_mode='HTML')
                 success += 1
             except: pass
             time.sleep(0.05)
-        bot.send_message(uid, f"📢 Рассылка завершена!\n✅ {success}/{len(data['users'])}")
-        broadcast_state.pop(uid, None)
     
     elif btype == "photo":
         if not message.photo:
-            bot.send_message(uid, "❌ Отправьте ФОТО!")
-            return
+            bot.send_message(uid, "❌ Отправьте ФОТО!"); return
         caption = message.caption or ""
-        data = load_data()
-        success = 0
-        for user_id in data.get("users", {}):
+        for user_id in users_list:
             try:
                 bot.send_photo(int(user_id), message.photo[-1].file_id, caption=caption, parse_mode='HTML')
                 success += 1
             except: pass
             time.sleep(0.05)
-        bot.send_message(uid, f"📢 Рассылка завершена!\n✅ {success}/{len(data['users'])}")
-        broadcast_state.pop(uid, None)
     
     elif btype == "video":
         if not message.video:
-            bot.send_message(uid, "❌ Отправьте ВИДЕО!")
-            return
+            bot.send_message(uid, "❌ Отправьте ВИДЕО!"); return
         caption = message.caption or ""
-        data = load_data()
-        success = 0
-        for user_id in data.get("users", {}):
+        for user_id in users_list:
             try:
                 bot.send_video(int(user_id), message.video.file_id, caption=caption, parse_mode='HTML')
                 success += 1
             except: pass
             time.sleep(0.05)
-        bot.send_message(uid, f"📢 Рассылка завершена!\n✅ {success}/{len(data['users'])}")
-        broadcast_state.pop(uid, None)
     
     elif btype == "button":
         parts = message.text.strip().split('\n')
         if len(parts) < 2:
-            bot.send_message(uid, "❌ Формат:\nТекст сообщения\nhttps://ссылка.ком\nНазвание кнопки")
-            return
-        
+            bot.send_message(uid, "❌ Формат:\nТекст\nhttps://ссылка\nКнопка"); return
         text_msg = parts[0]
         url = parts[1]
         btn_text = parts[2] if len(parts) > 2 else "Перейти"
-        
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton(btn_text, url=url))
-        
-        data = load_data()
-        success = 0
-        for user_id in data.get("users", {}):
+        for user_id in users_list:
             try:
                 bot.send_message(int(user_id), text_msg, reply_markup=markup, parse_mode='HTML')
                 success += 1
             except: pass
             time.sleep(0.05)
-        bot.send_message(uid, f"📢 Рассылка завершена!\n✅ {success}/{len(data['users'])}")
-        broadcast_state.pop(uid, None)
-
-def load_data():
-    try:
-        with open("bot_data.json", 'r', encoding='utf-8') as f: return json.load(f)
-    except: return {"users": {}}
+    
+    bot.send_message(uid, f"📢 <b>Рассылка завершена!</b>\n\n✅ Успешно: {success}\n📊 Всего пользователей: {total_users}", parse_mode='HTML')
 
 # ========== ТАРИФЫ ==========
 @bot.callback_query_handler(func=lambda call: call.data == "menu_tariffs")
@@ -764,8 +764,7 @@ def menu_promo(call):
 def menu_help(call):
     if bot_blocked(call): return
     bot.answer_callback_query(call.id)
-    text = "📚 <b>Помощь</b>\n\n🆓 Бесплатно 24ч\n💎 PRO: 10 скриптов, 50 МБ\n👑 Expert: безлимит, 1 ГБ\n\n💳 Оплата: Крипта/Stars/СБП"
-    bot.send_message(call.message.chat.id, text, parse_mode='HTML')
+    bot.send_message(call.message.chat.id, "📚 <b>Помощь</b>\n\n🆓 Бесплатно 24ч\n💎 PRO: 10 скриптов, 50 МБ\n👑 Expert: безлимит, 1 ГБ\n\n💳 Оплата: Крипта/Stars/СБП", parse_mode='HTML')
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('script:'))
 def script_action(call):
@@ -885,13 +884,12 @@ def monitor():
         time.sleep(MONITOR_INTERVAL)
 
 # ========== ЗАПУСК ==========
-import json
 if __name__ == '__main__':
     if os.path.exists(DATABASE_PATH): os.remove(DATABASE_PATH); print("🗑 Старая база удалена")
     init_db()
     threading.Thread(target=monitor, daemon=True).start()
     threading.Thread(target=check_crypto_payments, daemon=True).start()
     print(f"✅ Хостинг бот v{VERSION} запущен!")
-    print(f"📢 Рассылка: текст/фото/видео/кнопка")
+    print(f"📢 Рассылка: работает с БД")
     print(f"💳 СБП: 2202206714879132")
     bot.infinity_polling()
