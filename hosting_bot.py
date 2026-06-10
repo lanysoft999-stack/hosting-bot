@@ -1,6 +1,6 @@
 # hosting_bot.py - Хостинг бот (v6.3 - ОБЯЗАТЕЛЬНАЯ ПОДПИСКА)
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
 import os
 import sqlite3
 import threading
@@ -25,11 +25,7 @@ SCRIPTS_DIR = os.path.join(BASE_DIR, "scripts")
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
 TEMP_DIR = os.path.join(BASE_DIR, "temp")
 DATABASE_PATH = os.path.join(BASE_DIR, "bot_database.db")
-
-# Настройки обязательной подписки (админ может менять через панель)
-SUBSCRIPTION_CHANNEL = None  # @username канала (None = отключено)
-SUBSCRIPTION_PHOTO = None    # file_id фото для приглашения
-SUBSCRIPTION_DESC = "📢 Подпишитесь на канал чтобы использовать бота!"
+CHANNEL_FILE = os.path.join(BASE_DIR, "required_channel.json")
 
 # Тарифы
 FREE_MAX_SCRIPTS = 3
@@ -62,6 +58,7 @@ bot_status = "running"
 pending_payments = {}
 crypto_invoices = {}
 broadcast_state = {}
+channel_setup = {}
 
 # ========== БАЗА ДАННЫХ ==========
 def get_db():
@@ -178,6 +175,39 @@ def start_all_user_scripts():
                 if not err: update_script_status(s['id'], 'running', pid); started += 1
     return started
 
+# ========== ОБЯЗАТЕЛЬНАЯ ПОДПИСКА ==========
+def load_required_channel():
+    try:
+        with open(CHANNEL_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except:
+        return {"channel": None, "channel_name": None, "description": None, "photo": None}
+
+def save_required_channel(data):
+    with open(CHANNEL_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def check_user_subscribed(user_id):
+    channel_data = load_required_channel()
+    channel = channel_data.get("channel")
+    if not channel: return True
+    if user_id in ADMIN_IDS: return True
+    try:
+        member = bot.get_chat_member(chat_id=channel, user_id=user_id)
+        return member.status not in ["left", "kicked"]
+    except: return False
+
+def get_channel_subscribe_keyboard():
+    channel_data = load_required_channel()
+    channel = channel_data.get("channel", "")
+    channel_name = channel_data.get("channel_name", "канал")
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        InlineKeyboardButton(f"📢 Подписаться на {channel_name}", url=f"https://t.me/{channel.replace('@', '')}"),
+        InlineKeyboardButton("✅ Я подписался", callback_data="check_subscription")
+    )
+    return markup
+
 # ========== CRYPTO BOT ==========
 def create_crypto_invoice(amount_usd, description, payload):
     try:
@@ -192,35 +222,6 @@ def check_crypto_invoice(invoice_id):
         if r.get('ok') and r['result']['items']: return r['result']['items'][0]['status'] == 'paid'
     except: pass
     return False
-
-# ========== ПРОВЕРКА ПОДПИСКИ НА КАНАЛ ==========
-def check_channel_subscription(user_id):
-    """Проверяет подписан ли пользователь на канал"""
-    if not SUBSCRIPTION_CHANNEL or user_id in ADMIN_IDS:
-        return True
-    try:
-        member = bot.get_chat_member(SUBSCRIPTION_CHANNEL, user_id)
-        return member.status not in ['left', 'kicked', 'banned']
-    except:
-        return False
-
-def subscription_keyboard():
-    markup = InlineKeyboardMarkup(row_width=1)
-    if SUBSCRIPTION_CHANNEL:
-        markup.add(InlineKeyboardButton("📢 Подписаться на канал", url=f"https://t.me/{SUBSCRIPTION_CHANNEL.replace('@', '')}"))
-    markup.add(InlineKeyboardButton("✅ Проверить подписку", callback_data="check_sub"))
-    return markup
-
-def admin_subscription_settings():
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        InlineKeyboardButton("📢 Установить канал", callback_data="set_sub_channel"),
-        InlineKeyboardButton("🖼 Установить фото", callback_data="set_sub_photo"),
-        InlineKeyboardButton("📝 Изменить описание", callback_data="set_sub_desc"),
-        InlineKeyboardButton("❌ Отключить подписку", callback_data="disable_sub"),
-        InlineKeyboardButton("« Назад", callback_data="admin_back")
-    )
-    return markup
 
 # ========== УТИЛИТЫ ==========
 def get_user_limits(user_id):
@@ -239,8 +240,7 @@ def check_subscription(user_id):
     user = get_user(user_id)
     if not user: return False
     if user_id in ADMIN_IDS: return True
-    if user['subscription'] == 'free' and user.get('free_used', 0) == 0:
-        return True
+    if user['subscription'] == 'free' and user.get('free_used', 0) == 0: return True
     if user.get('subscription_expiry'):
         try:
             expiry = datetime.fromisoformat(user['subscription_expiry'])
@@ -261,8 +261,7 @@ def get_subscription_info(user_id):
             elif hours_left > 0: return f"{user['subscription'].upper()}", f"{hours_left}ч"
             else: return "Истекла", 0
         except: pass
-    if user['subscription'] == 'free' and user.get('free_used', 0) == 0:
-        return "🆓 Бесплатный (не активирован)", 0
+    if user['subscription'] == 'free' and user.get('free_used', 0) == 0: return "🆓 Бесплатный (не активирован)", 0
     return "Истекла", 0
 
 def cleanup_temp(user_id):
@@ -314,11 +313,9 @@ def load_data():
     try:
         users = get_all_users()
         result = {"users": {}}
-        for u in users:
-            result["users"][str(u['user_id'])] = u
+        for u in users: result["users"][str(u['user_id'])] = u
         return result
-    except:
-        return {"users": {}}
+    except: return {"users": {}}
 
 # ========== БОТ ==========
 bot = telebot.TeleBot(TOKEN)
@@ -333,7 +330,7 @@ def admin_panel():
         InlineKeyboardButton("👥 Пользователи", callback_data="admin_users_list"),
         InlineKeyboardButton("📋 Все скрипты", callback_data="admin_all_scripts"),
         InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast"),
-        InlineKeyboardButton("🔒 Обязательная подписка", callback_data="admin_subscription"),
+        InlineKeyboardButton("📢 Обязательная подписка", callback_data="admin_channel"),
     )
     markup.add(InlineKeyboardButton("🟢 ОСТАНОВИТЬ БОТА" if bot_status == "running" else "🔴 ЗАПУСТИТЬ БОТА", callback_data="admin_stop_bot" if bot_status == "running" else "admin_start_bot"))
     markup.add(InlineKeyboardButton("🛑 Остановить всё", callback_data="admin_stop_all"), InlineKeyboardButton("▶️ Запустить всё", callback_data="admin_start_all"))
@@ -346,11 +343,7 @@ def user_panel():
 
 def tariffs_panel():
     markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        InlineKeyboardButton("💎 PRO тарифы", callback_data="tariff_pro_menu"),
-        InlineKeyboardButton("👑 Expert тарифы", callback_data="tariff_expert_menu"),
-        InlineKeyboardButton("« Назад", callback_data="back_to_start")
-    )
+    markup.add(InlineKeyboardButton("💎 PRO тарифы", callback_data="tariff_pro_menu"), InlineKeyboardButton("👑 Expert тарифы", callback_data="tariff_expert_menu"), InlineKeyboardButton("« Назад", callback_data="back_to_start"))
     return markup
 
 def pro_tariffs_panel():
@@ -385,22 +378,44 @@ def broadcast_type_keyboard():
     )
     return markup
 
+# ========== ПРОВЕРКА ПОДПИСКИ ==========
+@bot.callback_query_handler(func=lambda call: call.data == "check_subscription")
+def check_subscription_callback(call):
+    bot.answer_callback_query(call.id)
+    if check_user_subscribed(call.from_user.id):
+        try:
+            bot.edit_message_text("✅ <b>Подписка подтверждена!</b>\n\nДоступ открыт!", call.message.chat.id, call.message.message_id, parse_mode='HTML')
+        except:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            bot.send_message(call.message.chat.id, "✅ <b>Подписка подтверждена!</b>\n\nДоступ открыт!", parse_mode='HTML')
+        cmd_start(call.message)
+    else:
+        bot.answer_callback_query(call.id, "❌ Вы не подписались на канал!", show_alert=True)
+
+# ========== СТАРТ ==========
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
     uid = message.from_user.id
     if not get_user(uid): create_user(uid, message.from_user.username)
     user = get_user(uid)
     
-    # Проверка обязательной подписки на канал
-    if not check_channel_subscription(uid) and uid not in ADMIN_IDS:
-        if SUBSCRIPTION_PHOTO:
-            bot.send_photo(uid, SUBSCRIPTION_PHOTO, 
-                caption=f"{SUBSCRIPTION_DESC}\n\n📢 {SUBSCRIPTION_CHANNEL}",
-                reply_markup=subscription_keyboard(), parse_mode='HTML')
+    # Проверка подписки на канал
+    if not check_user_subscribed(uid):
+        channel_data = load_required_channel()
+        channel_name = channel_data.get("channel_name", "канал")
+        description = channel_data.get("description", f"Подпишитесь на {channel_name} чтобы продолжить!")
+        photo = channel_data.get("photo")
+        
+        text = (
+            f"🔒 <b>Требуется подписка!</b>\n\n"
+            f"{description}\n\n"
+            f"После подписки нажмите кнопку проверки."
+        )
+        
+        if photo:
+            bot.send_photo(uid, photo, caption=text, reply_markup=get_channel_subscribe_keyboard(), parse_mode='HTML')
         else:
-            bot.send_message(uid, 
-                f"{SUBSCRIPTION_DESC}\n\n📢 {SUBSCRIPTION_CHANNEL}",
-                reply_markup=subscription_keyboard(), parse_mode='HTML')
+            bot.send_message(uid, text, reply_markup=get_channel_subscribe_keyboard(), parse_mode='HTML')
         return
     
     if uid in ADMIN_IDS:
@@ -413,97 +428,17 @@ def cmd_start(message):
     if not check_subscription(uid) and user.get('free_used', 0) == 1:
         mx, mz = get_user_limits(uid)
         text = f"🚀 <b>Hosting Bot</b>\n\n⚠️ <b>Подписка истекла!</b>\n\nСкриптов: {count_user_scripts(uid)}/{mx}\nРазмер: {mz} МБ\n\n💎 <b>Продлите подписку:</b>"
-        markup = InlineKeyboardMarkup(row_width=1)
-        markup.add(InlineKeyboardButton("💎 Купить подписку", callback_data="menu_tariffs"))
-        bot.send_message(uid, text, reply_markup=markup, parse_mode='HTML')
-        return
+        markup = InlineKeyboardMarkup(row_width=1); markup.add(InlineKeyboardButton("💎 Купить подписку", callback_data="menu_tariffs"))
+        bot.send_message(uid, text, reply_markup=markup, parse_mode='HTML'); return
     
     mx, mz = get_user_limits(uid)
     mx_text = "∞" if mx == 999 else mx
-    
     sub_info = ""
-    if isinstance(days_left, int) and days_left > 0:
-        sub_info = f"\n⏳ Осталось: {days_left} дн."
-    elif isinstance(days_left, str):
-        sub_info = f"\n⏳ Осталось: {days_left}"
+    if isinstance(days_left, int) and days_left > 0: sub_info = f"\n⏳ Осталось: {days_left} дн."
+    elif isinstance(days_left, str): sub_info = f"\n⏳ Осталось: {days_left}"
     
     text = f"🚀 <b>Hosting Bot</b>\n\nТариф: {sub_status}{sub_info}\nСкриптов: {count_user_scripts(uid)}/{mx_text}\nРазмер: {mz} МБ\n\nОтправьте .py или .zip файл!"
     bot.send_message(uid, text, reply_markup=user_panel(), parse_mode='HTML')
-
-# ========== ПРОВЕРКА ПОДПИСКИ ==========
-@bot.callback_query_handler(func=lambda call: call.data == "check_sub")
-def check_sub(call):
-    if check_channel_subscription(call.from_user.id):
-        bot.answer_callback_query(call.id, "✅ Подписка проверена!")
-        cmd_start(call.message)
-    else:
-        bot.answer_callback_query(call.id, "❌ Вы не подписались!", show_alert=True)
-
-# ========== НАСТРОЙКА ОБЯЗАТЕЛЬНОЙ ПОДПИСКИ ==========
-@bot.callback_query_handler(func=lambda call: call.data == "admin_subscription")
-def admin_subscription(call):
-    if call.from_user.id not in ADMIN_IDS: return
-    bot.answer_callback_query(call.id)
-    text = "🔒 <b>Обязательная подписка</b>\n\n"
-    if SUBSCRIPTION_CHANNEL:
-        text += f"📢 Канал: {SUBSCRIPTION_CHANNEL}\n🖼 Фото: {'Установлено' if SUBSCRIPTION_PHOTO else 'Нет'}\n📝 Описание: {SUBSCRIPTION_DESC}\n"
-    else:
-        text += "❌ Отключено\n\n"
-    text += "\nВыберите действие:"
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=admin_subscription_settings(), parse_mode='HTML')
-
-@bot.callback_query_handler(func=lambda call: call.data == "set_sub_channel")
-def set_sub_channel(call):
-    if call.from_user.id not in ADMIN_IDS: return
-    bot.answer_callback_query(call.id)
-    msg = bot.send_message(call.message.chat.id, "📢 Отправьте username канала (например: @my_channel):")
-    bot.register_next_step_handler(msg, process_sub_channel)
-
-def process_sub_channel(message):
-    global SUBSCRIPTION_CHANNEL
-    channel = message.text.strip()
-    if not channel.startswith('@'): channel = '@' + channel
-    try:
-        chat = bot.get_chat(channel)
-        SUBSCRIPTION_CHANNEL = channel
-        bot.send_message(message.chat.id, f"✅ Канал {channel} установлен! Добавьте бота в канал как админа.")
-    except:
-        bot.send_message(message.chat.id, "❌ Канал не найден! Бот должен быть админом канала.")
-
-@bot.callback_query_handler(func=lambda call: call.data == "set_sub_photo")
-def set_sub_photo(call):
-    if call.from_user.id not in ADMIN_IDS: return
-    bot.answer_callback_query(call.id)
-    msg = bot.send_message(call.message.chat.id, "🖼 Отправьте фото для приглашения:")
-    bot.register_next_step_handler(msg, process_sub_photo)
-
-def process_sub_photo(message):
-    global SUBSCRIPTION_PHOTO
-    if message.photo:
-        SUBSCRIPTION_PHOTO = message.photo[-1].file_id
-        bot.send_message(message.chat.id, "✅ Фото установлено!")
-    else:
-        bot.send_message(message.chat.id, "❌ Отправьте фото!")
-
-@bot.callback_query_handler(func=lambda call: call.data == "set_sub_desc")
-def set_sub_desc(call):
-    if call.from_user.id not in ADMIN_IDS: return
-    bot.answer_callback_query(call.id)
-    msg = bot.send_message(call.message.chat.id, "📝 Отправьте текст описания:")
-    bot.register_next_step_handler(msg, process_sub_desc)
-
-def process_sub_desc(message):
-    global SUBSCRIPTION_DESC
-    SUBSCRIPTION_DESC = message.text.strip()
-    bot.send_message(message.chat.id, f"✅ Описание обновлено:\n\n{SUBSCRIPTION_DESC}")
-
-@bot.callback_query_handler(func=lambda call: call.data == "disable_sub")
-def disable_sub(call):
-    if call.from_user.id not in ADMIN_IDS: return
-    global SUBSCRIPTION_CHANNEL
-    SUBSCRIPTION_CHANNEL = None
-    bot.answer_callback_query(call.id, "✅ Обязательная подписка отключена!")
-    admin_subscription(call)
 
 # ========== НАВИГАЦИЯ ==========
 @bot.callback_query_handler(func=lambda call: call.data == "back_to_start")
@@ -520,13 +455,117 @@ def admin_back(call):
         bot.send_message(call.message.chat.id, text, reply_markup=admin_panel(), parse_mode='HTML')
     bot.answer_callback_query(call.id)
 
+# ========== УПРАВЛЕНИЕ КАНАЛОМ ==========
+@bot.callback_query_handler(func=lambda call: call.data == "admin_channel")
+def admin_channel_menu(call):
+    if call.from_user.id not in ADMIN_IDS: bot.answer_callback_query(call.id, "❌"); return
+    bot.answer_callback_query(call.id)
+    
+    channel_data = load_required_channel()
+    channel = channel_data.get("channel", "не задан")
+    channel_name = channel_data.get("channel_name", "не задано")
+    
+    text = (
+        f"📢 <b>ОБЯЗАТЕЛЬНАЯ ПОДПИСКА</b>\n\n"
+        f"Канал: {channel}\n"
+        f"Название: {channel_name}\n"
+        f"Описание: {channel_data.get('description', 'не задано')[:100]}\n"
+        f"Фото: {'есть' if channel_data.get('photo') else 'нет'}\n\n"
+        f"Выберите действие:"
+    )
+    
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        InlineKeyboardButton("📝 Задать канал", callback_data="set_channel"),
+        InlineKeyboardButton("📝 Задать название", callback_data="set_channel_name"),
+        InlineKeyboardButton("📝 Задать описание", callback_data="set_channel_desc"),
+        InlineKeyboardButton("🖼 Задать фото", callback_data="set_channel_photo"),
+        InlineKeyboardButton("❌ Удалить канал", callback_data="delete_channel"),
+        InlineKeyboardButton("« Назад", callback_data="admin_back")
+    )
+    
+    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='HTML')
+
+@bot.callback_query_handler(func=lambda call: call.data == "set_channel")
+def set_channel_start(call):
+    if call.from_user.id not in ADMIN_IDS: return
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, "📝 Отправьте username канала:\n\nНапример: @my_channel")
+    bot.register_next_step_handler(msg, set_channel_finish)
+
+def set_channel_finish(message):
+    if message.from_user.id not in ADMIN_IDS: return
+    channel = message.text.strip()
+    if not channel.startswith("@"): channel = "@" + channel
+    try:
+        chat = bot.get_chat(channel)
+        channel_data = load_required_channel()
+        channel_data["channel"] = channel
+        channel_data["channel_name"] = chat.title
+        save_required_channel(channel_data)
+        bot.send_message(message.chat.id, f"✅ Канал {channel} установлен!\nНазвание: {chat.title}")
+    except:
+        bot.send_message(message.chat.id, "❌ Канал не найден! Проверьте username.")
+
+@bot.callback_query_handler(func=lambda call: call.data == "set_channel_name")
+def set_channel_name_start(call):
+    if call.from_user.id not in ADMIN_IDS: return
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, "📝 Отправьте название канала:")
+    bot.register_next_step_handler(msg, set_channel_name_finish)
+
+def set_channel_name_finish(message):
+    if message.from_user.id not in ADMIN_IDS: return
+    channel_data = load_required_channel()
+    channel_data["channel_name"] = message.text.strip()
+    save_required_channel(channel_data)
+    bot.send_message(message.chat.id, "✅ Название обновлено!")
+
+@bot.callback_query_handler(func=lambda call: call.data == "set_channel_desc")
+def set_channel_desc_start(call):
+    if call.from_user.id not in ADMIN_IDS: return
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, "📝 Отправьте описание:")
+    bot.register_next_step_handler(msg, set_channel_desc_finish)
+
+def set_channel_desc_finish(message):
+    if message.from_user.id not in ADMIN_IDS: return
+    channel_data = load_required_channel()
+    channel_data["description"] = message.text.strip()
+    save_required_channel(channel_data)
+    bot.send_message(message.chat.id, "✅ Описание обновлено!")
+
+@bot.callback_query_handler(func=lambda call: call.data == "set_channel_photo")
+def set_channel_photo_start(call):
+    if call.from_user.id not in ADMIN_IDS: return
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, "🖼 Отправьте фото:")
+    bot.register_next_step_handler(msg, set_channel_photo_finish)
+
+def set_channel_photo_finish(message):
+    if message.from_user.id not in ADMIN_IDS: return
+    if not message.photo:
+        bot.send_message(message.chat.id, "❌ Отправьте фото!")
+        return
+    channel_data = load_required_channel()
+    channel_data["photo"] = message.photo[-1].file_id
+    save_required_channel(channel_data)
+    bot.send_message(message.chat.id, "✅ Фото обновлено!")
+
+@bot.callback_query_handler(func=lambda call: call.data == "delete_channel")
+def delete_channel(call):
+    if call.from_user.id not in ADMIN_IDS: return
+    bot.answer_callback_query(call.id)
+    save_required_channel({"channel": None, "channel_name": None, "description": None, "photo": None})
+    bot.send_message(call.message.chat.id, "✅ Обязательная подписка удалена!")
+
 # ========== РАССЫЛКА ==========
 @bot.callback_query_handler(func=lambda call: call.data == "admin_broadcast")
 def admin_broadcast_start(call):
-    if call.from_user.id not in ADMIN_IDS: return
+    if call.from_user.id not in ADMIN_IDS: bot.answer_callback_query(call.id, "❌"); return
     bot.answer_callback_query(call.id)
     broadcast_state[call.from_user.id] = {"step": "choose_type"}
-    bot.edit_message_text("📢 <b>РАССЫЛКА</b>\n\nВыберите тип:", call.message.chat.id, call.message.message_id, reply_markup=broadcast_type_keyboard(), parse_mode='HTML')
+    bot.edit_message_text("📢 <b>РАССЫЛКА</b>\n\nВыберите тип рассылки:", call.message.chat.id, call.message.message_id, reply_markup=broadcast_type_keyboard(), parse_mode='HTML')
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("bcast_"))
 def broadcast_choose_type(call):
@@ -537,7 +576,7 @@ def broadcast_choose_type(call):
     if btype == "text": bot.edit_message_text("📝 Отправьте текст:", call.message.chat.id, call.message.message_id)
     elif btype == "photo": bot.edit_message_text("🖼 Отправьте ФОТО + подпись:", call.message.chat.id, call.message.message_id)
     elif btype == "video": bot.edit_message_text("🎥 Отправьте ВИДЕО + подпись:", call.message.chat.id, call.message.message_id)
-    elif btype == "button": bot.edit_message_text("🔗 Отправьте:\nТекст\nhttps://ссылка\nКнопка", call.message.chat.id, call.message.message_id)
+    elif btype == "button": bot.edit_message_text("🔗 Отправьте:\nТекст\nhttps://ссылка\nНазвание кнопки", call.message.chat.id, call.message.message_id)
 
 @bot.message_handler(func=lambda message: message.from_user.id in ADMIN_IDS and broadcast_state.get(message.from_user.id, {}).get("step") == "waiting_content")
 def broadcast_content(message):
@@ -549,20 +588,21 @@ def broadcast_content(message):
     total_users = len(users_list)
     if total_users == 0: bot.send_message(uid, "📢 Нет пользователей!"); return
     success = 0
+    
     if btype == "text":
         for user_id in users_list:
             try: bot.send_message(int(user_id), message.text, parse_mode='HTML'); success += 1
             except: pass
             time.sleep(0.05)
     elif btype == "photo":
-        if not message.photo: bot.send_message(uid, "❌ Фото!"); return
+        if not message.photo: bot.send_message(uid, "❌ Отправьте ФОТО!"); return
         caption = message.caption or ""
         for user_id in users_list:
             try: bot.send_photo(int(user_id), message.photo[-1].file_id, caption=caption, parse_mode='HTML'); success += 1
             except: pass
             time.sleep(0.05)
     elif btype == "video":
-        if not message.video: bot.send_message(uid, "❌ Видео!"); return
+        if not message.video: bot.send_message(uid, "❌ Отправьте ВИДЕО!"); return
         caption = message.caption or ""
         for user_id in users_list:
             try: bot.send_video(int(user_id), message.video.file_id, caption=caption, parse_mode='HTML'); success += 1
@@ -571,13 +611,15 @@ def broadcast_content(message):
     elif btype == "button":
         parts = message.text.strip().split('\n')
         if len(parts) < 2: bot.send_message(uid, "❌ Формат:\nТекст\nhttps://ссылка\nКнопка"); return
-        text_msg = parts[0]; url = parts[1]; btn_text = parts[2] if len(parts) > 2 else "Перейти"
+        text_msg, url = parts[0], parts[1]
+        btn_text = parts[2] if len(parts) > 2 else "Перейти"
         markup = InlineKeyboardMarkup(); markup.add(InlineKeyboardButton(btn_text, url=url))
         for user_id in users_list:
             try: bot.send_message(int(user_id), text_msg, reply_markup=markup, parse_mode='HTML'); success += 1
             except: pass
             time.sleep(0.05)
-    bot.send_message(uid, f"📢 <b>Рассылка завершена!</b>\n\n✅ {success}/{total_users}", parse_mode='HTML')
+    
+    bot.send_message(uid, f"📢 <b>Рассылка завершена!</b>\n\n✅ Успешно: {success}\n📊 Всего: {total_users}", parse_mode='HTML')
 
 # ========== ТАРИФЫ ==========
 @bot.callback_query_handler(func=lambda call: call.data == "menu_tariffs")
@@ -603,13 +645,13 @@ def menu_tariffs(call):
 def tariff_pro_menu(call):
     if bot_blocked(call): return
     bot.answer_callback_query(call.id)
-    bot.send_message(call.message.chat.id, "💎 <b>PRO тарифы</b>\n\n10 скриптов, до 50 МБ\n\nВыберите:", reply_markup=pro_tariffs_panel(), parse_mode='HTML')
+    bot.send_message(call.message.chat.id, "💎 <b>PRO тарифы</b>\n\nВыберите:", reply_markup=pro_tariffs_panel(), parse_mode='HTML')
 
 @bot.callback_query_handler(func=lambda call: call.data == "tariff_expert_menu")
 def tariff_expert_menu(call):
     if bot_blocked(call): return
     bot.answer_callback_query(call.id)
-    bot.send_message(call.message.chat.id, "👑 <b>Expert тарифы</b>\n\nБезлимит, до 1 ГБ\n\nВыберите:", reply_markup=expert_tariffs_panel(), parse_mode='HTML')
+    bot.send_message(call.message.chat.id, "👑 <b>Expert тарифы</b>\n\nВыберите:", reply_markup=expert_tariffs_panel(), parse_mode='HTML')
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_pro:"))
 def buy_pro(call):
@@ -656,13 +698,12 @@ def pay_sbp(call):
     if bot_blocked(call): return
     _, pt, pk = call.data.split(":"); d = (PRO_PRICES if pt == 'pro' else EXPERT_PRICES)[pk]; pn = "PRO" if pt == 'pro' else "Expert"
     text = (
-        f"💳 <b>Оплата СБП</b>\n\nТариф: {pn} {d['name']}\nСумма: {d['price_rub']} ₽\n\n"
+        f"💳 <b>Оплата СБП</b>\n\n"
+        f"Тариф: {pn} {d['name']}\nСумма: {d['price_rub']} ₽\n\n"
         f"📝 <b>Реквизиты:</b>\n💰 Номер: <code>2202206714879132</code>\nБанк: СБЕР\n\n"
-        f"📸 После оплаты отправьте скриншот чека.\n⏳ Админ проверит и активирует тариф."
+        f"📸 После оплаты отправьте скриншот."
     )
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("✅ Я оплатил", callback_data=f"confirm_pay:{pt}:{pk}:sbp"))
-    markup.add(InlineKeyboardButton("« Назад", callback_data=f"buy_{pt}:{pk}"))
+    markup = InlineKeyboardMarkup(); markup.add(InlineKeyboardButton("✅ Я оплатил", callback_data=f"confirm_pay:{pt}:{pk}:sbp"), InlineKeyboardButton("« Назад", callback_data=f"buy_{pt}:{pk}"))
     bot.send_message(call.message.chat.id, text, reply_markup=markup, parse_mode='HTML'); bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_pay:"))
@@ -691,8 +732,7 @@ def handle_screenshot(message):
     pi = pending_payments.pop(message.from_user.id)
     d = (PRO_PRICES if pi['plan_type'] == 'pro' else EXPERT_PRICES)[pi['plan_key']]; pn = "PRO" if pi['plan_type'] == 'pro' else "Expert"
     for aid in ADMIN_IDS:
-        markup = InlineKeyboardMarkup(row_width=2)
-        markup.add(InlineKeyboardButton("✅ Подтвердить", callback_data=f"approve_pay:{message.from_user.id}:{pi['plan_type']}:{pi['plan_key']}"), InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_pay:{message.from_user.id}"))
+        markup = InlineKeyboardMarkup(row_width=2); markup.add(InlineKeyboardButton("✅ Подтвердить", callback_data=f"approve_pay:{message.from_user.id}:{pi['plan_type']}:{pi['plan_key']}"), InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_pay:{message.from_user.id}"))
         try: bot.send_photo(aid, message.photo[-1].file_id, caption=f"💰 Платёж!\n👤 {message.from_user.first_name}\n📦 {pn} {d['name']}\n💰 {d['price_rub']}₽", reply_markup=markup, parse_mode='HTML')
         except: pass
     bot.send_message(message.chat.id, "✅ Чек отправлен!", parse_mode='HTML')
@@ -815,8 +855,6 @@ def admin_all_scripts(call):
 @bot.callback_query_handler(func=lambda call: call.data == "menu_upload")
 def menu_upload(call):
     if bot_blocked(call): return
-    if not check_channel_subscription(call.from_user.id):
-        bot.answer_callback_query(call.id, "❌ Подпишитесь на канал!"); return
     if not check_subscription(call.from_user.id): bot.answer_callback_query(call.id, "❌ Подписка истекла!"); return
     bot.answer_callback_query(call.id); bot.send_message(call.message.chat.id, "📦 Отправьте .py или .zip")
 
@@ -887,7 +925,6 @@ def handle_document(message):
     if bot_status == "stopped" and message.from_user.id not in ADMIN_IDS: bot.reply_to(message, "🔴 Остановлен!"); return
     uid = message.from_user.id
     if not get_user(uid): create_user(uid, message.from_user.username)
-    if not check_channel_subscription(uid): bot.reply_to(message, "❌ Подпишитесь на канал!"); return
     if not check_subscription(uid): bot.reply_to(message, "❌ Подписка истекла!"); return
     if not check_user_limits(uid): bot.reply_to(message, "❌ Лимит!"); return
     fi = bot.get_file(message.document.file_id); fn = message.document.file_name; fs = message.document.file_size
@@ -963,7 +1000,6 @@ if __name__ == '__main__':
     threading.Thread(target=monitor, daemon=True).start()
     threading.Thread(target=check_crypto_payments, daemon=True).start()
     print(f"✅ Хостинг бот v{VERSION} запущен!")
-    print(f"📢 Рассылка: работает")
+    print(f"📢 Обязательная подписка на канал")
     print(f"💳 СБП: 2202206714879132")
-    print(f"🔒 Обязательная подписка: {SUBSCRIPTION_CHANNEL or 'отключена'}")
     bot.infinity_polling()
