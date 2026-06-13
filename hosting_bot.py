@@ -60,7 +60,7 @@ class MemoryCache:
 cache = MemoryCache(max_size=500)
 
 # ========== НАСТРОЙКИ ==========
-TOKEN = "8964647336:AAEk_dWa-1XrVGs2F3OSK7ZPOwUYiQg-rkc"
+TOKEN = "8964647336:AAGarVi4g2Pd-hV9aLjCngspMIqtDf6s57g"
 VERSION = "15.6.0"
 ADMIN_IDS = [314148464]
 CRYPTO_TOKEN = "593773:AA2SggSE9MiTxJ6jdir8g7ufY2Cd2Pchvhu"
