@@ -1,4 +1,4 @@
-# hosting_bot.py - Хостинг бот v15.6 (Авто-фикс БД + всё остальное)
+# hosting_bot.py - Хостинг бот v15.6 (Авто-фикс БД + чат поддержки + выгодные тарифы)
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, BotCommand, MenuButtonCommands, MessageEntity
 import os
@@ -92,20 +92,38 @@ LOCATIONS = {
 }
 
 TIER_INFO = {
-    "1": {"name": "Tier 1", "price_7d": 65,  "cpu": "1 vCPU",  "ram": "512 MB",  "scripts": 3,   "speed": "⚡ Базовый",       "docker": {"cpus": "0.5", "memory": "512m",  "cpu_shares": 256,  "pids_limit": 50,  "restart_policy": "no"}},
-    "2": {"name": "Tier 2", "price_7d": 100, "cpu": "2 vCPU",  "ram": "1 GB",    "scripts": 5,   "speed": "⚡⚡ Оптимальный",  "docker": {"cpus": "1.0", "memory": "1g",    "cpu_shares": 512,  "pids_limit": 100, "restart_policy": "on-failure:2"}},
-    "3": {"name": "Tier 3", "price_7d": 140, "cpu": "3 vCPU",  "ram": "2 GB",    "scripts": 10,  "speed": "⚡⚡⚡ Быстрый",    "docker": {"cpus": "1.5", "memory": "2g",    "cpu_shares": 768,  "pids_limit": 200, "restart_policy": "on-failure:3"}},
-    "4": {"name": "Tier 4", "price_7d": 220, "cpu": "4 vCPU",  "ram": "4 GB",    "scripts": 20,  "speed": "🔥 Турбо",         "docker": {"cpus": "2.0", "memory": "4g",    "cpu_shares": 1024, "pids_limit": 500, "restart_policy": "always"}},
-    "5": {"name": "Tier 5", "price_7d": 300, "cpu": "5 vCPU",  "ram": "8 GB",    "scripts": 999, "speed": "👑 Максимальный",  "docker": {"cpus": "4.0", "memory": "8g",    "cpu_shares": 2048, "pids_limit": 2000,"restart_policy": "always"}},
+    "1": {"name": "Tier 1", "price_7d": 49,  "cpu": "1 vCPU",  "ram": "512 MB",  "scripts": 3,   "speed": "⚡ Базовый",       "docker": {"cpus": "0.5", "memory": "512m",  "cpu_shares": 256,  "pids_limit": 50,  "restart_policy": "no"}},
+    "2": {"name": "Tier 2", "price_7d": 79, "cpu": "2 vCPU",  "ram": "1 GB",    "scripts": 5,   "speed": "⚡⚡ Оптимальный",  "docker": {"cpus": "1.0", "memory": "1g",    "cpu_shares": 512,  "pids_limit": 100, "restart_policy": "on-failure:2"}},
+    "3": {"name": "Tier 3", "price_7d": 119, "cpu": "3 vCPU",  "ram": "2 GB",    "scripts": 10,  "speed": "⚡⚡⚡ Быстрый",    "docker": {"cpus": "1.5", "memory": "2g",    "cpu_shares": 768,  "pids_limit": 200, "restart_policy": "on-failure:3"}},
+    "4": {"name": "Tier 4", "price_7d": 179, "cpu": "4 vCPU",  "ram": "4 GB",    "scripts": 20,  "speed": "🔥 Турбо",         "docker": {"cpus": "2.0", "memory": "4g",    "cpu_shares": 1024, "pids_limit": 500, "restart_policy": "always"}},
+    "5": {"name": "Tier 5", "price_7d": 249, "cpu": "5 vCPU",  "ram": "8 GB",    "scripts": 999, "speed": "👑 Максимальный",  "docker": {"cpus": "4.0", "memory": "8g",    "cpu_shares": 2048, "pids_limit": 2000,"restart_policy": "always"}},
 }
 
-DAYS_MULTIPLIER = {"7": 1, "30": 4, "90": 10}
-DAYS_NAMES = {"7": "7 дней", "30": "30 дней", "90": "90 дней"}
+DAYS_MULTIPLIER = {"7": 1, "30": 3, "90": 6}
+DAYS_NAMES = {"7": "7 дней", "30": "30 дней (🔥 -25%)", "90": "90 дней (💎 -40%)"}
 
 def calc_price(tier, days):
     base = TIER_INFO.get(tier, {}).get("price_7d", 0)
     mult = DAYS_MULTIPLIER.get(days, 1)
     return base * mult
+
+def get_savings(tier, days):
+    base = TIER_INFO.get(tier, {}).get("price_7d", 0)
+    if days == "7":
+        return 0, 0
+    elif days == "30":
+        full_price = base * 4
+        sale_price = base * 3
+        savings = full_price - sale_price
+        percent = 25
+    elif days == "90":
+        full_price = base * 13
+        sale_price = base * 6
+        savings = full_price - sale_price
+        percent = 54
+    else:
+        return 0, 0
+    return savings, percent
 
 DOCKER_CONFIGS = {t: TIER_INFO[t]["docker"] for t in TIER_INFO}
 DOCKER_CONFIGS['free'] = {'cpus': '0.5', 'memory': '128m', 'cpu_shares': 256, 'pids_limit': 50, 'restart_policy': 'no'}
@@ -128,6 +146,8 @@ crypto_invoices = {}
 broadcast_state = {}
 upload_states = {}
 user_config_state = {}
+support_chats = {}
+support_admins = {}
 executor = ThreadPoolExecutor(max_workers=5)
 
 CATEGORY_PHOTOS = {"main": None, "shop": None, "hosts": None, "deposit": None, "profile": None, "support": None}
@@ -222,7 +242,6 @@ def get_db():
 
 def init_db():
     with get_db() as conn:
-        # Создаём таблицы
         conn.execute('''CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY, username TEXT, balance REAL DEFAULT 0.0, 
             subscription TEXT DEFAULT 'free', subscription_expiry TIMESTAMP, 
@@ -238,7 +257,6 @@ def init_db():
             max_uses INTEGER DEFAULT 1, used_count INTEGER DEFAULT 0)''')
         conn.commit()
         
-        # === АВТО-ИСПРАВЛЕНИЕ СТРУКТУРЫ ===
         cursor = conn.execute("PRAGMA table_info(users)")
         columns = [col[1] for col in cursor.fetchall()]
         
@@ -706,7 +724,11 @@ def configurator_keyboard(uid):
     
     if location and tier and days:
         total = calc_price(tier, days)
-        kb.add(InlineKeyboardButton(f"💰 Оплатить — {total}₽", callback_data="cfg_pay"))
+        savings, percent = get_savings(tier, days)
+        btn_text = f"💰 Оплатить — {total}₽"
+        if savings > 0:
+            btn_text += f" (-{percent}%)"
+        kb.add(InlineKeyboardButton(btn_text, callback_data="cfg_pay"))
     
     kb.add(InlineKeyboardButton("« В магазин", callback_data="cfg_back"))
     
@@ -732,12 +754,21 @@ def get_config_description(state):
             text += f"\n<i>Доступно Tier 1-{max_t}</i>"
     text += "\n━━━━━━━━━━━━━━━━━━━━━━\n⏳ <b>Срок:</b> "
     if tier and days:
-        text += f"{DAYS_NAMES[days]} — {calc_price(tier, days)}₽"
+        price = calc_price(tier, days)
+        savings, percent = get_savings(tier, days)
+        text += f"{DAYS_NAMES[days]} — {price}₽"
+        if savings > 0:
+            text += f"\n💰 <b>Экономия: {savings}₽ ({percent}%)</b>"
     else:
         text += "❌ Не выбран"
     text += "\n"
     if location and tier and days:
-        text += f"━━━━━━━━━━━━━━━━━━━━━━\n💰 <b>ИТОГО: {calc_price(tier, days)}₽</b>\n"
+        total = calc_price(tier, days)
+        savings, percent = get_savings(tier, days)
+        text += f"━━━━━━━━━━━━━━━━━━━━━━\n💰 <b>ИТОГО: {total}₽</b>"
+        if savings > 0:
+            text += f"\n🎉 <b>Вы экономите: {savings}₽!</b>"
+        text += "\n"
     text += "\n👇 <i>Выберите параметры:</i>"
     return text
 
@@ -882,9 +913,15 @@ def config_pay(call):
     days = state['days']
     location = state['location']
     total = calc_price(tier, days)
+    savings, percent = get_savings(tier, days)
     user = get_user(uid)
     balance = user.get('balance', 0) if user else 0
-    text = f"🧾 <b>ПОДТВЕРЖДЕНИЕ</b>\n\n📍 {LOCATIONS[location]['name']}\n📦 {TIER_INFO[tier]['name']}\n📅 {DAYS_NAMES[days]}\n💰 Итого: {total}₽\n💳 Баланс: {balance}₽\n\n👇 Оплата:"
+    
+    text = f"🧾 <b>ПОДТВЕРЖДЕНИЕ</b>\n\n📍 {LOCATIONS[location]['name']}\n📦 {TIER_INFO[tier]['name']}\n📅 {DAYS_NAMES[days]}\n💰 Итого: {total}₽"
+    if savings > 0:
+        text += f"\n🎉 Экономия: {savings}₽ ({percent}%)"
+    text += f"\n💳 Баланс: {balance}₽\n\n👇 Оплата:"
+    
     mk = InlineKeyboardMarkup(row_width=1)
     if balance >= total:
         mk.add(InlineKeyboardButton(f"💳 Оплатить с баланса ({balance}₽)", callback_data=f"cfg_dopay:balance"))
@@ -920,7 +957,12 @@ def config_do_payment(call):
     sub_type = 'basic' if tier in ['1','2'] else 'pro' if tier in ['3','4'] else 'expert'
     set_subscription(uid, sub_type, days_int, tier, location)
     new_balance = get_user(uid).get('balance', 0)
-    bot.send_message(uid, f"✅ <b>Оплачено!</b>\n\n📦 {TIER_INFO[tier]['name']}\n📅 {DAYS_NAMES[days]}\n💰 Списано: {total}₽\n💳 Остаток: {new_balance}₽\n\nТариф активирован!", reply_markup=user_keyboard())
+    savings, percent = get_savings(tier, days)
+    msg_text = f"✅ <b>Оплачено!</b>\n\n📦 {TIER_INFO[tier]['name']}\n📅 {DAYS_NAMES[days]}\n💰 Списано: {total}₽"
+    if savings > 0:
+        msg_text += f"\n🎉 Сэкономлено: {savings}₽"
+    msg_text += f"\n💳 Остаток: {new_balance}₽\n\nТариф активирован!"
+    bot.send_message(uid, msg_text, reply_markup=user_keyboard())
 
 @bot.callback_query_handler(func=lambda c: c.data == "cfg_back")
 def config_back(call):
@@ -1095,14 +1137,301 @@ def btn_profile(m):
     
     send_with_photo(uid, "profile", text, mk)
 
+# ========== ПОДДЕРЖКА ==========
 @bot.message_handler(func=lambda m: m.text == "🆘 Поддержка")
 def btn_support(m):
     uid = m.from_user.id
     if is_bot_blocked(uid): 
         bot.send_message(uid, "🔴 Бот остановлен!", reply_markup=user_keyboard())
         return
-    mk = InlineKeyboardMarkup().add(InlineKeyboardButton("💬 @hesers", url=SUPPORT_URL))
-    send_with_photo(uid, "support", "📬 <b>Поддержка</b>", mk)
+    
+    if uid in support_chats:
+        mk = InlineKeyboardMarkup(row_width=1)
+        mk.add(InlineKeyboardButton("❌ Закрыть чат", callback_data="close_user_chat"))
+        bot.send_message(uid, "⚠️ <b>У вас уже открыт чат с поддержкой!</b>\n\nПросто напишите сообщение — оно будет передано.\nДля выхода: /cancel", reply_markup=mk)
+        return
+    
+    if uid in support_admins.values():
+        bot.send_message(uid, "⚠️ <b>Администратор уже общается с вами!</b>\n\nПросто напишите сообщение в чат.\nДля выхода: /cancel")
+        return
+    
+    mk = InlineKeyboardMarkup(row_width=1)
+    mk.add(InlineKeyboardButton("📨 Написать в поддержку", callback_data="open_support"))
+    
+    send_with_photo(uid, "support", 
+        "🆘 <b>ПОДДЕРЖКА</b>\n\n"
+        "Опишите вашу проблему, и администратор ответит вам в ближайшее время.\n\n"
+        "⏱ Время ответа: до 24 часов\n"
+        "📋 Темы: хосты, оплата, тарифы\n\n"
+        "👇 Нажмите кнопку ниже:", mk)
+
+@bot.callback_query_handler(func=lambda c: c.data == "open_support")
+def open_support_chat(call):
+    uid = call.from_user.id
+    
+    if uid in support_chats:
+        bot.answer_callback_query(call.id, "⚠️ Чат уже открыт!")
+        return
+    
+    user = get_user(uid)
+    username = f"@{user['username']}" if user and user.get('username') else "Нет username"
+    name = call.from_user.first_name or "Пользователь"
+    
+    mk = InlineKeyboardMarkup(row_width=1)
+    mk.add(
+        InlineKeyboardButton("📨 Взять в работу", callback_data=f"take_support:{uid}"),
+        InlineKeyboardButton("❌ Закрыть", callback_data=f"close_support_chat:{uid}")
+    )
+    
+    for aid in ADMIN_IDS:
+        try:
+            bot.send_message(aid,
+                f"📨 <b>НОВОЕ ОБРАЩЕНИЕ</b>\n\n"
+                f"👤 Имя: {name}\n"
+                f"🆔 ID: <code>{uid}</code>\n"
+                f"📛 Username: {username}\n\n"
+                f"<i>Нажмите «Взять в работу» для ответа</i>",
+                reply_markup=mk
+            )
+        except Exception as e:
+            logger.error(f"Notify admin {aid}: {e}")
+    
+    bot.edit_message_text(
+        "✅ <b>Обращение отправлено!</b>\n\n"
+        "Опишите вашу проблему в чате. Администратор ответит вам здесь.\n\n"
+        "❌ <i>Для отмены: /cancel</i>",
+        call.message.chat.id, call.message.message_id
+    )
+    
+    support_chats[uid] = {"status": "waiting_admin", "admin_id": None}
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda c: c.data == "close_user_chat")
+def close_user_chat_btn(call):
+    uid = call.from_user.id
+    if uid in support_chats:
+        admin_id = support_chats[uid].get("admin_id")
+        if admin_id:
+            try:
+                bot.send_message(admin_id, f"❌ <b>Пользователь {uid} закрыл чат</b>")
+            except:
+                pass
+            if admin_id in support_admins:
+                del support_admins[admin_id]
+        del support_chats[uid]
+    bot.edit_message_text("✅ <b>Чат с поддержкой закрыт</b>", call.message.chat.id, call.message.message_id)
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("take_support:"))
+def take_support(call):
+    if call.from_user.id not in ADMIN_IDS:
+        bot.answer_callback_query(call.id, "❌ Нет доступа!")
+        return
+    
+    try:
+        uid = int(call.data.split(":")[1])
+        
+        if uid not in support_chats:
+            bot.answer_callback_query(call.id, "❌ Чат уже закрыт или взят другим админом")
+            return
+        
+        admin_id = call.from_user.id
+        
+        if admin_id in support_admins:
+            bot.answer_callback_query(call.id, "⚠️ У вас уже есть активный чат! Закройте его сначала.")
+            return
+        
+        support_chats[uid]["admin_id"] = admin_id
+        support_chats[uid]["status"] = "active"
+        support_admins[admin_id] = uid
+        
+        bot.edit_message_caption(
+            f"📨 <b>ОБРАЩЕНИЕ В РАБОТЕ</b>\n\n"
+            f"👤 ID: <code>{uid}</code>\n"
+            f"👨‍💼 Админ: {call.from_user.first_name}\n\n"
+            f"<i>Отправьте сообщение — оно будет переслано пользователю</i>\n"
+            f"<i>/stop_support — завершить чат</i>",
+            call.message.chat.id, call.message.message_id
+        )
+        
+        try:
+            bot.send_message(uid,
+                "👨‍💼 <b>Администратор подключился!</b>\n\n"
+                "Опишите вашу проблему, он ответит вам здесь.\n"
+                "❌ /cancel — закрыть чат"
+            )
+        except:
+            pass
+        
+        bot.answer_callback_query(call.id, "✅ Вы взяли обращение!")
+    except Exception as e:
+        logger.error(f"Take support error: {e}")
+        bot.answer_callback_query(call.id, "❌ Ошибка!")
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("close_support_chat:"))
+def admin_close_support_chat(call):
+    if call.from_user.id not in ADMIN_IDS:
+        bot.answer_callback_query(call.id, "❌ Нет доступа!")
+        return
+    
+    try:
+        uid = int(call.data.split(":")[1])
+        
+        if uid in support_chats:
+            admin_id = support_chats[uid].get("admin_id")
+            if admin_id and admin_id in support_admins:
+                del support_admins[admin_id]
+            del support_chats[uid]
+        
+        try:
+            bot.send_message(uid, "🔒 <b>Чат с поддержкой закрыт администратором.</b>\n\nЕсли проблема осталась — откройте новое обращение.")
+        except:
+            pass
+        
+        bot.edit_message_caption(
+            f"❌ <b>Чат закрыт</b>\n🆔 Пользователь: <code>{uid}</code>",
+            call.message.chat.id, call.message.message_id
+        )
+        bot.answer_callback_query(call.id, "✅ Закрыто!")
+    except Exception as e:
+        logger.error(f"Admin close support error: {e}")
+        bot.answer_callback_query(call.id, "❌ Ошибка!")
+
+@bot.message_handler(func=lambda m: m.from_user.id in support_chats and m.from_user.id not in ADMIN_IDS)
+def user_support_message(message):
+    uid = message.from_user.id
+    
+    if message.text and message.text == '/cancel':
+        if uid in support_chats:
+            admin_id = support_chats[uid].get("admin_id")
+            if admin_id:
+                try:
+                    bot.send_message(admin_id, f"❌ <b>Пользователь {uid} закрыл чат</b>")
+                except:
+                    pass
+                if admin_id in support_admins:
+                    del support_admins[admin_id]
+            del support_chats[uid]
+        bot.send_message(uid, "✅ <b>Чат с поддержкой закрыт</b>", reply_markup=user_keyboard())
+        return
+    
+    admin_id = support_chats[uid].get("admin_id")
+    targets = [admin_id] if admin_id else ADMIN_IDS
+    
+    for tid in targets:
+        try:
+            if message.text:
+                bot.send_message(tid, 
+                    f"📩 <b>Сообщение от пользователя</b>\n"
+                    f"🆔 <code>{uid}</code>\n"
+                    f"👤 {message.from_user.first_name}\n"
+                    f"━━━━━━━━━━━━━━━━━\n"
+                    f"{message.text}\n"
+                    f"━━━━━━━━━━━━━━━━━\n"
+                    f"<i>/stop_support — завершить</i>")
+            elif message.photo:
+                bot.send_photo(tid, message.photo[-1].file_id,
+                    caption=f"📩 <b>Фото от пользователя {uid}</b>\n"
+                            f"👤 {message.from_user.first_name}")
+            elif message.video:
+                bot.send_video(tid, message.video.file_id,
+                    caption=f"📩 <b>Видео от пользователя {uid}</b>\n"
+                            f"👤 {message.from_user.first_name}")
+            elif message.document:
+                bot.send_document(tid, message.document.file_id,
+                    caption=f"📩 <b>Файл от пользователя {uid}</b>\n"
+                            f"👤 {message.from_user.first_name}")
+            elif message.voice:
+                bot.send_voice(tid, message.voice.file_id,
+                    caption=f"📩 <b>Голосовое от пользователя {uid}</b>")
+            else:
+                bot.send_message(tid, f"📩 <b>Неподдерживаемый формат от {uid}</b>")
+        except Exception as e:
+            logger.error(f"Forward user message to {tid}: {e}")
+    
+    bot.send_message(uid, "✅ <b>Сообщение отправлено!</b>\nОжидайте ответа администратора.")
+
+@bot.message_handler(func=lambda m: m.from_user.id in ADMIN_IDS and m.from_user.id in support_admins)
+def admin_support_message(message):
+    admin_id = message.from_user.id
+    
+    if message.text and message.text == '/stop_support':
+        uid = support_admins.get(admin_id)
+        if uid:
+            try:
+                bot.send_message(uid, "🔒 <b>Администратор завершил чат.</b>\n\nЕсли проблема осталась — откройте новое обращение.")
+            except:
+                pass
+            if uid in support_chats:
+                del support_chats[uid]
+            del support_admins[admin_id]
+        bot.send_message(admin_id, "✅ <b>Чат с пользователем закрыт</b>")
+        return
+    
+    uid = support_admins.get(admin_id)
+    if not uid:
+        bot.send_message(admin_id, "❌ Нет активного чата!")
+        return
+    
+    try:
+        if message.text:
+            bot.send_message(uid,
+                f"👨‍💼 <b>Ответ поддержки:</b>\n"
+                f"━━━━━━━━━━━━━━━━━\n"
+                f"{message.text}\n"
+                f"━━━━━━━━━━━━━━━━━\n"
+                f"❌ /cancel — закрыть чат")
+        elif message.photo:
+            bot.send_photo(uid, message.photo[-1].file_id,
+                caption=f"👨‍💼 <b>Фото от поддержки</b>\n"
+                        f"{message.caption or ''}")
+        elif message.video:
+            bot.send_video(uid, message.video.file_id,
+                caption=f"👨‍💼 <b>Видео от поддержки</b>\n"
+                        f"{message.caption or ''}")
+        elif message.document:
+            bot.send_document(uid, message.document.file_id,
+                caption=f"👨‍💼 <b>Файл от поддержки</b>\n"
+                        f"{message.caption or ''}")
+        elif message.voice:
+            bot.send_voice(uid, message.voice.file_id)
+            bot.send_message(uid, "👨‍💼 <b>Голосовое от поддержки</b>")
+        else:
+            bot.send_message(uid, "👨‍💼 <b>Поддержка отправила неподдерживаемый формат</b>")
+        
+        bot.send_message(admin_id, "✅ <b>Отправлено пользователю!</b>")
+    except Exception as e:
+        logger.error(f"Send admin reply to {uid}: {e}")
+        bot.send_message(admin_id, f"❌ Ошибка отправки: {e}")
+
+@bot.message_handler(commands=['stop_support'])
+def cmd_stop_support(message):
+    uid = message.from_user.id
+    
+    if uid in ADMIN_IDS and uid in support_admins:
+        user_id = support_admins[uid]
+        try:
+            bot.send_message(user_id, "🔒 <b>Администратор завершил чат.</b>\n\nЕсли проблема осталась — откройте новое обращение.")
+        except:
+            pass
+        if user_id in support_chats:
+            del support_chats[user_id]
+        del support_admins[uid]
+        bot.send_message(uid, "✅ <b>Чат с пользователем закрыт</b>")
+    
+    elif uid in support_chats:
+        admin_id = support_chats[uid].get("admin_id")
+        if admin_id:
+            try:
+                bot.send_message(admin_id, f"❌ <b>Пользователь {uid} закрыл чат</b>")
+            except:
+                pass
+            if admin_id in support_admins:
+                del support_admins[admin_id]
+        del support_chats[uid]
+        bot.send_message(uid, "✅ <b>Чат с поддержкой закрыт</b>", reply_markup=user_keyboard())
+    else:
+        bot.send_message(uid, "❌ Нет активного чата с поддержкой")
 
 # ========== АДМИН-ПАНЕЛЬ ==========
 @bot.message_handler(func=lambda m: m.text == "📊 Стата" and m.from_user.id in ADMIN_IDS)
@@ -1265,23 +1594,18 @@ def save_category_photo(message, cat):
     photos = load_photos(); photos[cat] = message.photo[-1].file_id; save_photos(photos)
     bot.send_message(message.chat.id, f"✅ {cat}")
 
-# ========== АДМИН: ФОТО ХОСТ-СЕРВИСА ==========
 @bot.message_handler(func=lambda m: m.text == "🖼 Фото ХС" and m.from_user.id in ADMIN_IDS)
 def admin_photo_host_service(m):
     uid = m.from_user.id
     photos = load_photos()
     current = "✅ Установлено" if photos.get("shop") else "❌ Не установлено"
-    
     text = f"🖼 <b>ФОТО ХОСТ-СЕРВИСА</b>\n\nСтатус: {current}\n\nОтправьте фото для установки или нажмите кнопку:"
-    
     mk = InlineKeyboardMarkup(row_width=1)
     mk.add(
         InlineKeyboardButton("🖼 Установить фото", callback_data="setphoto_hs"),
         InlineKeyboardButton("🗑 Удалить фото", callback_data="delphoto_hs")
     )
-    
     bot.send_message(uid, text, reply_markup=mk)
-
 
 @bot.callback_query_handler(func=lambda c: c.data == "setphoto_hs")
 def set_photo_hs(call):
@@ -1289,7 +1613,6 @@ def set_photo_hs(call):
     bot.answer_callback_query(call.id)
     msg = bot.send_message(call.message.chat.id, "🖼 <b>Отправьте фото для хост-сервиса</b>\n\n❌ /skip для отмены")
     bot.register_next_step_handler(msg, save_photo_hs)
-
 
 def save_photo_hs(message):
     if message.from_user.id not in ADMIN_IDS: return
@@ -1304,7 +1627,6 @@ def save_photo_hs(message):
     save_photos(photos)
     bot.send_photo(message.chat.id, message.photo[-1].file_id, caption="✅ Фото для хост-сервиса сохранено!")
 
-
 @bot.callback_query_handler(func=lambda c: c.data == "delphoto_hs")
 def del_photo_hs(call):
     if call.from_user.id not in ADMIN_IDS: return
@@ -1313,7 +1635,6 @@ def del_photo_hs(call):
     photos['shop'] = None
     save_photos(photos)
     bot.edit_message_text("🗑 <b>Фото хост-сервиса удалено!</b>", call.message.chat.id, call.message.message_id)
-
 
 @bot.message_handler(func=lambda m: m.text == "🎫 Промо" and m.from_user.id in ADMIN_IDS)
 def admin_promo_menu(m):
