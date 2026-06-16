@@ -25,7 +25,7 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "28.0 FINAL"
+VERSION = "29.0 FIXED"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
@@ -79,7 +79,7 @@ def init_db():
 
 init_db()
 
-# ========== ФУНКЦИИ ДЛЯ МЕДИА ==========
+# ========== МЕДИА ==========
 def save_media(section, file_id, file_type, caption=''):
     cursor.execute("DELETE FROM media WHERE section = ?", (section,))
     cursor.execute("INSERT INTO media (section, file_id, file_type, caption) VALUES (?,?,?,?)",
@@ -91,25 +91,25 @@ def get_media(section):
     row = cursor.fetchone()
     return dict(row) if row else None
 
-def send_media(chat_id, section, text=None):
+def try_send_media(chat_id, section, text, markup=None):
+    """Отправляет медиа если есть, иначе текст. Возвращает True если медиа отправлено."""
     media = get_media(section)
     if not media:
-        if text:
-            bot.send_message(chat_id, text, parse_mode='Markdown')
         return False
     
     try:
-        if media['file_type'] == 'video':
-            bot.send_video(chat_id, media['file_id'], caption=text or media.get('caption', ''), parse_mode='Markdown')
-        elif media['file_type'] == 'photo':
-            bot.send_photo(chat_id, media['file_id'], caption=text or media.get('caption', ''), parse_mode='Markdown')
+        if media['file_type'] == 'photo':
+            bot.send_photo(chat_id, media['file_id'], caption=text, reply_markup=markup, parse_mode='Markdown')
+            return True
+        elif media['file_type'] == 'video':
+            bot.send_video(chat_id, media['file_id'], caption=text, reply_markup=markup, parse_mode='Markdown')
+            return True
         elif media['file_type'] == 'animation':
-            bot.send_animation(chat_id, media['file_id'], caption=text or media.get('caption', ''), parse_mode='Markdown')
-        return True
+            bot.send_animation(chat_id, media['file_id'], caption=text, reply_markup=markup, parse_mode='Markdown')
+            return True
     except:
-        if text:
-            bot.send_message(chat_id, text, parse_mode='Markdown')
-        return False
+        pass
+    return False
 
 # ========== ФУНКЦИИ БД ==========
 def get_user(user_id):
@@ -269,6 +269,7 @@ def get_main_menu(user_id=None):
         markup.add(KeyboardButton("🎨 Оформление"))
     return markup
 
+# ========== СТАРТ ==========
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
     user_id = message.from_user.id
@@ -287,17 +288,15 @@ def cmd_start(message):
     else: st = "🆓 Free"
     
     text = f"🚀 **Hosting Bot v{VERSION}**\n\n👤 {st}\n📱 Управление скриптами\n💎 Премиум подписка\n👥 Рефералы"
-    sent = send_media(user_id, 'welcome', text)
-    if not sent:
+    
+    if not try_send_media(user_id, 'welcome', text):
         bot.send_message(user_id, text, reply_markup=get_main_menu(user_id), parse_mode='Markdown')
     else:
         bot.send_message(user_id, "👇 Меню:", reply_markup=get_main_menu(user_id))
 
-@bot.message_handler(commands=['profile'])
-def cmd_profile(message):
-    menu_profile(message)
-
+# ========== ПРОФИЛЬ ==========
 @bot.message_handler(func=lambda m: m.text == "👤 Профиль")
+@bot.message_handler(commands=['profile'])
 def menu_profile(message):
     user_id = message.from_user.id
     days = get_days_left(user_id)
@@ -308,42 +307,45 @@ def menu_profile(message):
     refs = get_referral_count(user_id)
     
     text = f"👤 **Профиль**\n\n🆔 `{user_id}`\n📊 {st}\n📁 Скриптов: {scripts}/{FREE_MAX_SCRIPTS}\n👥 Рефералов: {refs}"
-    
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
     
-    sent = send_media(user_id, 'profile', text)
-    if not sent:
+    if not try_send_media(user_id, 'profile', text, markup):
         bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
 
+# ========== СКРИПТЫ ==========
 @bot.message_handler(func=lambda m: m.text == "📱 Мои скрипты")
 @bot.message_handler(commands=['scripts'])
 def menu_scripts(message):
-    scripts = get_user_scripts(message.from_user.id)
-    if not scripts: 
-        markup = InlineKeyboardMarkup()
+    user_id = message.chat.id
+    scripts = get_user_scripts(user_id)
+    markup = InlineKeyboardMarkup(row_width=2)
+    
+    if not scripts:
         markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
-        bot.send_message(message.chat.id, "📭 Нет скриптов. Отправьте .py файл!", reply_markup=markup)
+        text = "📭 Нет скриптов. Отправьте .py файл!"
+        if not try_send_media(user_id, 'scripts', text, markup):
+            bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
         return
     
-    text = "📋 **Скрипты:**"
-    sent = send_media(message.chat.id, 'scripts', text)
-    
-    markup = InlineKeyboardMarkup(row_width=2)
     for s in scripts[:20]:
         emoji = "🟢" if s['status'] == 'running' else "🔴"
-        markup.add(InlineKeyboardButton(f"{emoji} {s['name'][:20]}", callback_data=f"info_{s['id']}"), InlineKeyboardButton("🗑", callback_data=f"del_{s['id']}"))
+        markup.add(InlineKeyboardButton(f"{emoji} {s['name'][:20]}", callback_data=f"info_{s['id']}"), 
+                   InlineKeyboardButton("🗑", callback_data=f"del_{s['id']}"))
     markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
     
-    if not sent:
-        bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode='Markdown')
+    text = "📋 **Скрипты:**"
+    if not try_send_media(user_id, 'scripts', text, markup):
+        bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
 
+# ========== ЗАГРУЗКА ==========
 @bot.message_handler(func=lambda m: m.text == "📤 Загрузить")
 def menu_upload(message):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
     bot.send_message(message.chat.id, "📤 Отправьте .py файл или ZIP архив!", reply_markup=markup)
 
+# ========== ПРЕМИУМ ==========
 @bot.message_handler(func=lambda m: m.text == "💎 Премиум")
 @bot.message_handler(commands=['premium', 'buy'])
 def menu_premium(message):
@@ -351,20 +353,101 @@ def menu_premium(message):
     if is_premium(user_id):
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
-        bot.send_message(user_id, f"💎 **Премиум: {get_days_left(user_id)} дн**", reply_markup=markup, parse_mode='Markdown')
+        text = f"💎 **Премиум: {get_days_left(user_id)} дн**"
+        if not try_send_media(user_id, 'premium', text, markup):
+            bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
         return
-    
-    text = "💰 **Выберите валюту:**"
-    sent = send_media(user_id, 'premium', text)
     
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(InlineKeyboardButton("💵 USDT", callback_data="m_usdt"), InlineKeyboardButton("💎 TON", callback_data="m_ton"))
     markup.add(InlineKeyboardButton("🔑 Промокод", callback_data="promo"))
     markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
     
-    if not sent:
+    text = "💰 **Выберите валюту:**"
+    if not try_send_media(user_id, 'premium', text, markup):
         bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
 
+# ========== РЕФЕРАЛЫ ==========
+@bot.message_handler(func=lambda m: m.text == "👥 Рефералы")
+@bot.message_handler(commands=['ref'])
+def menu_ref(message):
+    uid = message.from_user.id
+    cnt = get_referral_count(uid)
+    un = bot.get_me().username
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
+    
+    text = f"👥 **Рефералы**\n\n🔗 `https://t.me/{un}?start=ref{uid}`\n👤 Рефералов: {cnt}\n🎁 Друг +7 дн, ты +3 дн!"
+    if not try_send_media(uid, 'referral', text, markup):
+        bot.send_message(uid, text, reply_markup=markup, parse_mode='Markdown')
+
+# ========== АДМИН ==========
+@bot.message_handler(func=lambda m: m.text == "👑 Админ" and m.from_user.id == ADMIN_ID)
+def menu_admin(message):
+    sc = get_all_scripts()
+    rn = len([s for s in sc if s['status'] == 'running'])
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(InlineKeyboardButton("🔍 Все скрипты", callback_data="adm_scr"))
+    markup.add(InlineKeyboardButton("💎 Выдать премиум", callback_data="adm_prem"))
+    markup.add(InlineKeyboardButton("🎨 Оформление", callback_data="adm_media"))
+    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
+    bot.send_message(ADMIN_ID, f"👑 **Админ**\n📁 Скриптов: {len(sc)}\n🟢 Запущено: {rn}", reply_markup=markup, parse_mode='Markdown')
+
+@bot.message_handler(func=lambda m: m.text == "🎨 Оформление" and m.from_user.id == ADMIN_ID)
+def menu_media(message):
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(InlineKeyboardButton("🏠 Приветствие", callback_data="media_welcome"))
+    markup.add(InlineKeyboardButton("👤 Профиль", callback_data="media_profile"))
+    markup.add(InlineKeyboardButton("📱 Скрипты", callback_data="media_scripts"))
+    markup.add(InlineKeyboardButton("💎 Премиум", callback_data="media_premium"))
+    markup.add(InlineKeyboardButton("👥 Рефералы", callback_data="media_referral"))
+    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
+    bot.send_message(ADMIN_ID, "🎨 **Оформление разделов**\n\nВыберите раздел для добавления фото/видео:", reply_markup=markup, parse_mode='Markdown')
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('media_'))
+def media_section(call):
+    if call.from_user.id != ADMIN_ID: return bot.answer_callback_query(call.id, "❌")
+    section = call.data[6:]
+    admin_media_state[call.from_user.id] = section
+    names = {'welcome':'🏠 Приветствие','profile':'👤 Профиль','scripts':'📱 Скрипты','premium':'💎 Премиум','referral':'👥 Рефералы'}
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("🗑 Удалить медиа", callback_data=f"delmedia_{section}"))
+    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="adm_media"))
+    bot.edit_message_text(f"🎨 **{names.get(section, section)}**\n\nОтправьте фото, видео или GIF.", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('delmedia_'))
+def delete_media(call):
+    if call.from_user.id != ADMIN_ID: return bot.answer_callback_query(call.id, "❌")
+    section = call.data[9:]
+    cursor.execute("DELETE FROM media WHERE section = ?", (section,))
+    conn.commit()
+    bot.edit_message_text(f"✅ Медиа удалено для **{section}**", call.message.chat.id, call.message.message_id, parse_mode='Markdown')
+    bot.answer_callback_query(call.id, "✅")
+
+@bot.message_handler(content_types=['photo', 'video', 'animation'])
+def handle_admin_media(message):
+    if message.from_user.id != ADMIN_ID or message.from_user.id not in admin_media_state:
+        return
+    
+    section = admin_media_state.pop(message.from_user.id)
+    
+    if message.content_type == 'photo':
+        file_id = message.photo[-1].file_id
+        file_type = 'photo'
+    elif message.content_type == 'video':
+        file_id = message.video.file_id
+        file_type = 'video'
+    elif message.content_type == 'animation':
+        file_id = message.animation.file_id
+        file_type = 'animation'
+    else:
+        return
+    
+    save_media(section, file_id, file_type, message.caption or '')
+    bot.reply_to(message, f"✅ Медиа сохранено для **{section}**!")
+
+# ========== CALLBACKS ==========
 @bot.callback_query_handler(func=lambda call: call.data == "back_main")
 def back_main(call):
     bot.answer_callback_query(call.id)
@@ -420,111 +503,7 @@ def enter_promo(call):
     bot.register_next_step_handler(msg, lambda m: activate_premium(m.from_user.id, 30) or bot.reply_to(m, "✅ Премиум на 30 дней!"))
     bot.answer_callback_query(call.id)
 
-@bot.message_handler(func=lambda m: m.text == "👥 Рефералы")
-@bot.message_handler(commands=['ref'])
-def menu_ref(message):
-    uid = message.from_user.id
-    cnt = get_referral_count(uid)
-    un = bot.get_me().username
-    
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
-    
-    text = f"👥 **Рефералы**\n\n🔗 `https://t.me/{un}?start=ref{uid}`\n👤 Рефералов: {cnt}\n🎁 Друг +7 дн, ты +3 дн!"
-    sent = send_media(message.chat.id, 'referral', text)
-    if not sent:
-        bot.send_message(uid, text, reply_markup=markup, parse_mode='Markdown')
-
-# ========== АДМИНКА С МЕДИА ==========
-@bot.message_handler(func=lambda m: m.text == "👑 Админ" and m.from_user.id == ADMIN_ID)
-def menu_admin(message):
-    sc = get_all_scripts()
-    rn = len([s for s in sc if s['status'] == 'running'])
-    
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(InlineKeyboardButton("🔍 Все скрипты", callback_data="adm_scr"))
-    markup.add(InlineKeyboardButton("💎 Выдать премиум", callback_data="adm_prem"))
-    markup.add(InlineKeyboardButton("🎨 Оформление", callback_data="adm_media"))
-    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
-    
-    bot.send_message(ADMIN_ID, f"👑 **Админ**\n📁 Скриптов: {len(sc)}\n🟢 Запущено: {rn}", reply_markup=markup, parse_mode='Markdown')
-
-@bot.message_handler(func=lambda m: m.text == "🎨 Оформление" and m.from_user.id == ADMIN_ID)
-def menu_media(message):
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(InlineKeyboardButton("🏠 Приветствие", callback_data="media_welcome"))
-    markup.add(InlineKeyboardButton("👤 Профиль", callback_data="media_profile"))
-    markup.add(InlineKeyboardButton("📱 Скрипты", callback_data="media_scripts"))
-    markup.add(InlineKeyboardButton("💎 Премиум", callback_data="media_premium"))
-    markup.add(InlineKeyboardButton("👥 Рефералы", callback_data="media_referral"))
-    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
-    
-    text = "🎨 **Оформление разделов**\n\nВыберите раздел для добавления фото/видео:"
-    bot.send_message(ADMIN_ID, text, reply_markup=markup, parse_mode='Markdown')
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('media_'))
-def media_section(call):
-    if call.from_user.id != ADMIN_ID:
-        bot.answer_callback_query(call.id, "❌")
-        return
-    
-    section = call.data[6:]
-    admin_media_state[call.from_user.id] = section
-    
-    section_names = {
-        'welcome': '🏠 Приветствие',
-        'profile': '👤 Профиль',
-        'scripts': '📱 Скрипты',
-        'premium': '💎 Премиум',
-        'referral': '👥 Рефералы'
-    }
-    
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("🗑 Удалить медиа", callback_data=f"delmedia_{section}"))
-    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="adm_media"))
-    
-    bot.edit_message_text(
-        f"🎨 **{section_names.get(section, section)}**\n\n"
-        f"Отправьте фото, видео или GIF для этого раздела.\n"
-        f"Или нажмите кнопку чтобы удалить текущее медиа.",
-        call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown'
-    )
-    bot.answer_callback_query(call.id)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('delmedia_'))
-def delete_media(call):
-    if call.from_user.id != ADMIN_ID:
-        bot.answer_callback_query(call.id, "❌")
-        return
-    
-    section = call.data[9:]
-    cursor.execute("DELETE FROM media WHERE section = ?", (section,))
-    conn.commit()
-    bot.edit_message_text(f"✅ Медиа удалено для раздела **{section}**", call.message.chat.id, call.message.message_id, parse_mode='Markdown')
-    bot.answer_callback_query(call.id, "✅ Удалено!")
-
-@bot.message_handler(content_types=['photo', 'video', 'animation'], func=lambda m: m.from_user.id == ADMIN_ID and m.from_user.id in admin_media_state)
-def handle_admin_media(message):
-    section = admin_media_state.pop(message.from_user.id)
-    
-    if message.content_type == 'photo':
-        file_id = message.photo[-1].file_id
-        file_type = 'photo'
-    elif message.content_type == 'video':
-        file_id = message.video.file_id
-        file_type = 'video'
-    elif message.content_type == 'animation':
-        file_id = message.animation.file_id
-        file_type = 'animation'
-    else:
-        return
-    
-    caption = message.caption or ''
-    save_media(section, file_id, file_type, caption)
-    
-    bot.reply_to(message, f"✅ Медиа сохранено для раздела **{section}**!\n\nПроверьте: нажмите соответствующий раздел в меню.")
-
-# ========== ОСТАЛЬНЫЕ АДМИН-ФУНКЦИИ ==========
+# ========== АДМИН СКРИПТЫ ==========
 @bot.message_handler(func=lambda m: m.text == "🔍 Все скрипты" and m.from_user.id == ADMIN_ID)
 def menu_all_scripts(message):
     sc = get_all_scripts()[:30]
@@ -557,7 +536,7 @@ def info_cb(call):
         bot.answer_callback_query(call.id); show_script_info(call.message.chat.id, s)
     else: bot.answer_callback_query(call.id, "❌")
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('adm_') and call.data not in ['adm_scr', 'adm_prem', 'adm_media'])
+@bot.callback_query_handler(func=lambda call: call.data.startswith('adm_') and call.data not in ['adm_scr','adm_prem','adm_media'])
 def adm_cb(call):
     s = get_script(call.data[4:])
     if s and call.from_user.id == ADMIN_ID:
@@ -574,9 +553,7 @@ def adm_prem_cb(call):
     bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "adm_media")
-def adm_media_cb(call):
-    bot.answer_callback_query(call.id)
-    menu_media(call.message)
+def adm_media_cb(call): bot.answer_callback_query(call.id); menu_media(call.message)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('start_'))
 def start_cb(call):
@@ -617,6 +594,7 @@ def del_cb(call):
         try: bot.edit_message_text("🗑", call.message.chat.id, call.message.message_id)
         except: pass
 
+# ========== ЗАГРУЗКА ФАЙЛОВ ==========
 @bot.message_handler(content_types=['document'])
 def handle_doc(message):
     uid = message.from_user.id
@@ -709,8 +687,7 @@ def monitor():
 
 if __name__ == '__main__':
     print(f"🚀 HOSTING v{VERSION}")
-    print("🎨 Медиа-оформление: ВКЛ")
-    print("🔙 Кнопки Назад: ВКЛ")
+    print("🎨 Медиа: ВКЛ | 🔙 Назад: ВКЛ")
     threading.Thread(target=monitor, daemon=True).start()
     
     while True:
