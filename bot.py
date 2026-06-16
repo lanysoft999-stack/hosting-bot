@@ -777,3 +777,60 @@ def proceed_with_script(user_id, script_path, original_filename):
         pass
 
 # ========== МОНИТОРИНГ ==========
+def monitor():
+    while True:
+        try:
+            for s in get_all_running_scripts():
+                if s.get('pid') and not is_process_alive(s['pid']):
+                    if s.get('main_file'):
+                        main_path = os.path.join(s['path'], s['main_file'])
+                    else:
+                        py_files = find_py_files(s['path'])
+                        main_path = py_files[0] if py_files else None
+                    
+                    if main_path and os.path.exists(main_path) and s['restart_count'] < 3:
+                        time.sleep(5)
+                        pid, err = run_script(s['id'], main_path)
+                        if pid:
+                            update_script_status(s['id'], 'running', pid)
+                            increment_restart(s['id'])
+                    else:
+                        update_script_status(s['id'], 'stopped')
+        except:
+            pass
+        time.sleep(MONITOR_INTERVAL)
+
+# ========== ЗАПУСК ==========
+if __name__ == '__main__':
+    print("=" * 50)
+    print(f"  🚀 HOSTING BOT v{VERSION}")
+    print(f"  ☁️ Render Cloud")
+    print("=" * 50)
+    
+    threading.Thread(target=monitor, daemon=True).start()
+    
+    # Для Render - запускаем веб-сервер на порту 10000
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import socket
+    
+    class HealthCheck(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+    
+    # Запускаем веб-сервер в отдельном потоке
+    def run_web():
+        server = HTTPServer(('0.0.0.0', 10000), HealthCheck)
+        server.serve_forever()
+    
+    threading.Thread(target=run_web, daemon=True).start()
+    
+    # Запускаем бота
+    while True:
+        try:
+            print("✅ Бот запущен!")
+            bot.infinity_polling()
+        except Exception as e:
+            print(f"❌ {e}")
+            time.sleep(10)
