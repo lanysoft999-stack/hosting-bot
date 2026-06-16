@@ -26,8 +26,7 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-# ========== КОНФИГ ==========
-VERSION = "21.0 WEBAPP"
+VERSION = "21.0 FINAL"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
@@ -294,21 +293,14 @@ def cmd_start(message):
     else: st = "🆓 Free"
     bot.send_message(user_id, f"🚀 **Hosting Bot v{VERSION}**\n\n👤 {st}\n📱 Нажми 👤 Профиль для веб-панели", reply_markup=get_main_menu(user_id), parse_mode='Markdown')
 
-# ========== КНОПКА ПРОФИЛЬ (WEB APP ВНУТРИ TELEGRAM) ==========
 @bot.message_handler(func=lambda m: m.text == "👤 Профиль")
 def menu_profile(message):
     user_id = message.from_user.id
     host = get_host()
-    
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(
-        "🚀 Открыть панель управления",
-        web_app=WebAppInfo(url=f"https://{host}/panel")
-    ))
-    
-    bot.send_message(user_id, "​", reply_markup=markup)
+    markup.add(InlineKeyboardButton("🚀 Открыть панель управления", web_app=WebAppInfo(url=f"https://{host}/panel")))
+    bot.send_message(user_id, "👤", reply_markup=markup)
 
-# ========== МЕНЮ ==========
 @bot.message_handler(func=lambda m: m.text == "📱 Мои скрипты")
 def menu_scripts(message):
     scripts = get_user_scripts(message.from_user.id)
@@ -585,20 +577,18 @@ def monitor():
         except: pass
         time.sleep(10)
 
-# ========== ВЕБ-ПАНЕЛЬ (С TELEGRAM WEBAPP) ==========
+# ========== ВЕБ-ПАНЕЛЬ ==========
 WEB_HTML = r"""<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover"><title>Hosting Panel</title><script src="https://telegram.org/js/telegram-web-app.js"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"><style>:root{--bg:#06060e;--surface:#0f0f23;--surface2:#161630;--surface3:#1e1e40;--text:#ffffff;--text2:#c8c8e0;--text3:#8888a8;--border:#282850;--accent:#667eea;--green:#34c759;--gold:#ffcc00;--blue:#007aff;--purple:#af52de;--red:#ff3b30}*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;background:var(--bg);min-height:100vh;padding:12px;color:var(--text)}.app{max-width:440px;margin:0 auto}.header{display:flex;align-items:center;gap:10px;padding:8px 0 18px}.avatar{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--purple));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:17px;background-size:cover;background-position:center;overflow:hidden;flex-shrink:0;box-shadow:0 4px 15px rgba(102,126,234,0.3)}.avatar img{width:100%;height:100%;object-fit:cover;border-radius:14px}.header-name{color:#fff;font-weight:700;font-size:15px}.header-email{color:var(--text2);font-size:11px}.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px}.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;text-align:center}.stat-card .number{font-size:28px;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}.stat-card .label{color:var(--text3);font-size:12px}.tabs{display:flex;gap:8px;margin-bottom:16px}.tab{padding:10px 20px;border:none;border-radius:20px;cursor:pointer;font-weight:700;font-size:14px;background:var(--surface);color:var(--text);border:1px solid var(--border);font-family:'Inter',sans-serif}.tab.active{background:linear-gradient(135deg,var(--accent),var(--purple));color:#fff;border-color:transparent}.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px;margin-bottom:16px}.section-title{color:#fff;font-size:16px;font-weight:700;margin-bottom:12px}.script-item{display:flex;justify-content:space-between;align-items:center;padding:14px;border-radius:14px;margin-bottom:8px;background:var(--surface2);border:1px solid var(--border)}.status-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px}.status-dot.running{background:var(--green);box-shadow:0 0 10px rgba(52,199,89,0.5)}.status-dot.stopped{background:var(--red)}.script-name{font-weight:600;font-size:14px}.script-meta{font-size:11px;color:var(--text3)}.btn{padding:10px 16px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:700;color:#fff;font-family:'Inter',sans-serif}.btn:active{transform:scale(.95)}.btn-start{background:linear-gradient(135deg,var(--green),#16a34a)}.btn-stop{background:linear-gradient(135deg,var(--red),#c00)}.btn-logs{background:linear-gradient(135deg,var(--blue),#0056d6)}.btn-submit{background:linear-gradient(135deg,var(--accent),var(--purple));width:100%;padding:12px;font-size:14px}.log-content{background:#111;border-radius:10px;padding:12px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto;color:#0f0;margin-top:8px;display:none;white-space:pre-wrap;border:1px solid var(--border)}.log-content.show{display:block}.live-box{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:14px;margin-bottom:18px}.live-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}.live-dot{width:8px;height:8px;background:var(--green);border-radius:50%;animation:onlinePulse 2s infinite}@keyframes onlinePulse{0%,100%{box-shadow:0 0 0 0 rgba(52,199,89,0.6)}50%{box-shadow:0 0 0 8px rgba(52,199,89,0)}}.live-text{color:var(--green);font-size:12px;font-weight:700}.live-counter{color:var(--text3);font-size:11px;margin-left:auto}.live-scroll{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}.live-scroll::-webkit-scrollbar{display:none}.purchase-mini{display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:10px 14px;white-space:nowrap;flex-shrink:0}.purchase-mini-avatar{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--purple));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0}.purchase-mini-name{color:#fff;font-weight:600;font-size:13px}.purchase-mini-detail{color:var(--text2);font-size:10px}.purchase-mini-price{color:#ffcc00;font-weight:800;font-size:15px}.purchase-mini-time{color:var(--text3);font-size:9px}.rating-block{text-align:center}.rating-big{font-size:48px;font-weight:900;color:#ffcc00}.rating-stars-row{display:flex;gap:4px;justify-content:center;margin:8px 0}.rating-count{color:var(--text2);font-size:14px}.review-item{background:var(--surface2);border-radius:14px;padding:14px;margin-bottom:8px;display:flex;gap:12px}.review-avatar{width:40px;height:40px;min-width:40px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--purple));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px}.review-name{color:#fff;font-weight:600;font-size:14px}.review-stars-sm{color:#ffcc00;font-size:12px}.review-text{color:var(--text2);font-size:13px;margin-top:4px}.stars-vote{display:flex;gap:6px;justify-content:center;margin:12px 0}.star-btn{font-size:36px;color:#444;cursor:pointer;background:none;border:none}.star-btn.active{color:#ffcc00}.input-field{width:100%;background:var(--surface2);border:1px solid var(--border);color:#fff;padding:12px;border-radius:10px;font-size:14px;font-family:'Inter',sans-serif;resize:vertical;min-height:60px;margin-bottom:8px}.input-field:focus{outline:none;border-color:var(--accent)}.empty{text-align:center;padding:20px;color:var(--text3);font-size:14px}.toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(100px);background:#2a2a2a;color:#fff;padding:14px 20px;border-radius:14px;font-size:14px;opacity:0;transition:all .4s ease;z-index:4000;font-weight:600}.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}</style></head><body><div class="app"><div class="header"><div class="avatar" id="homeAvatar">A</div><div><div class="header-name" id="homeName">Загрузка...</div><div class="header-email" id="homeEmail">-</div></div></div><div class="stats"><div class="stat-card"><div class="number" id="totalScripts">-</div><div class="label">Скриптов</div></div><div class="stat-card"><div class="number" id="runningScripts">-</div><div class="label">Запущено</div></div><div class="stat-card"><div class="number" id="daysLeft">-</div><div class="label">Дней</div></div><div class="stat-card"><div class="number" id="totalRestarts">-</div><div class="label">Рестартов</div></div></div><div class="live-box"><div class="live-header"><div class="live-dot"></div><div class="live-text">LIVE ПОКУПКИ</div><div class="live-counter" id="purchaseCounter">0</div></div><div class="live-scroll" id="livePurchasesScroll"><div class="empty">Загрузка...</div></div></div><div class="tabs"><button class="tab active" onclick="switchTab('scripts')">📱 Скрипты</button><button class="tab" onclick="switchTab('reviews')">⭐ Отзывы</button></div><div id="tab-scripts"><div class="card"><div class="section-title">📱 Мои скрипты</div><div id="scriptsList"><div class="empty">Загрузка...</div></div></div></div><div id="tab-reviews" style="display:none"><div class="card rating-block"><div class="section-title">Рейтинг</div><div class="rating-big" id="ratingBig">0.0</div><div class="rating-stars-row" id="ratingStarsRow"></div><div class="rating-count" id="ratingCount">0 отзывов</div></div><div class="card"><div class="section-title">✍️ Отзыв</div><div class="stars-vote" id="ratingStarsVote"><button class="star-btn" onclick="setRating(1)"><i class="fas fa-star"></i></button><button class="star-btn" onclick="setRating(2)"><i class="fas fa-star"></i></button><button class="star-btn" onclick="setRating(3)"><i class="fas fa-star"></i></button><button class="star-btn" onclick="setRating(4)"><i class="fas fa-star"></i></button><button class="star-btn" onclick="setRating(5)"><i class="fas fa-star"></i></button></div><textarea class="input-field" id="reviewText" placeholder="Напишите отзыв..."></textarea><button class="btn btn-submit" onclick="submitReview()"><i class="fas fa-paper-plane"></i> Отправить</button><div id="reviewsList" style="margin-top:12px"></div></div></div></div><div class="toast" id="toast"></div><script>
 const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-// Получаем user_id из Telegram WebApp
 let uid = null;
 try { uid = tg.initDataUnsafe?.user?.id; } catch(e) {}
 if (!uid) { uid = new URLSearchParams(location.search).get('user_id'); }
 
-// Если нет user_id - показываем ошибку
 if (!uid) {
-    document.body.innerHTML = '<div style="color:#fff;text-align:center;padding:40px"><h2>❌ Ошибка</h2><p>Не удалось получить ID пользователя</p><p>Откройте панель через бота</p></div>';
+    document.body.innerHTML = '<div style="color:#fff;text-align:center;padding:40px"><h2>❌ Ошибка</h2><p>Не удалось получить ID</p><p>Откройте панель через бота</p></div>';
 }
 
 var rating = 0;
