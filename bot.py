@@ -1,4 +1,4 @@
-import os 
+import os
 import sys
 import time
 import json
@@ -26,7 +26,7 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "24.0 FIXED"
+VERSION = "25.0 STABLE"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
@@ -587,14 +587,13 @@ def monitor():
         except: pass
         time.sleep(10)
 
-# ========== ВЕБ-ПАНЕЛЬ (РАБОЧАЯ ВЕРСИЯ) ==========
+# ========== ВЕБ-ПАНЕЛЬ ==========
 WEB_HTML = """<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <title>Hosting Panel</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 <style>
 :root{--bg:#06060e;--card:#0f0f23;--accent:#667eea;--green:#34c759;--red:#ff3b30;--blue:#007aff;--gold:#ffcc00;--text:#fff;--text2:#a0a0b0;--border:#282850}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -604,8 +603,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .avatar{width:48px;height:48px;border-radius:14px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:#fff}
 .header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
 .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
-.stat-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center}
-.stat-num{font-size:28px;font-weight:800;color:var(--accent)}.stat-label{color:var(--text2);font-size:12px}
+.stat{padding:14px;text-align:center;background:var(--card);border-radius:14px;border:1px solid var(--border)}
+.stat .n{font-size:28px;font-weight:800;color:var(--accent)}.stat .l{color:var(--text2);font-size:12px}
 .tabs{display:flex;gap:8px;margin-bottom:12px}
 .tab{padding:10px 18px;border-radius:20px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-weight:600;font-size:14px}
 .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
@@ -618,7 +617,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .plans{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
 .plan{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center}
 .plan .price{font-size:24px;font-weight:800;color:var(--accent)}.plan .days{font-size:14px;color:var(--text2)}
-.review-box{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px}
+.review-box{background:rgba(255,255,255,0.03);border-radius:12px;padding:12px;margin-bottom:8px}
 .stars{color:var(--gold)}
 textarea{width:100%;background:#111;border:1px solid var(--border);color:#fff;padding:10px;border-radius:8px;height:60px;margin-bottom:8px;font-family:inherit}
 .btn-submit{width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer}
@@ -631,10 +630,10 @@ textarea{width:100%;background:#111;border:1px solid var(--border);color:#fff;pa
 <div><div style="font-weight:700" id="un">-</div><div style="color:var(--text2);font-size:13px" id="ue">-</div></div>
 </div>
 <div class="stats">
-<div class="stat-card"><div class="stat-num" id="ts">-</div><div class="stat-label">Скриптов</div></div>
-<div class="stat-card"><div class="stat-num" id="rs">-</div><div class="stat-label">Запущено</div></div>
-<div class="stat-card"><div class="stat-num" id="dl">-</div><div class="stat-label">Дней</div></div>
-<div class="stat-card"><div class="stat-num" id="tr">-</div><div class="stat-label">Рестартов</div></div>
+<div class="stat"><div class="n" id="ts">-</div><div class="l">Скриптов</div></div>
+<div class="stat"><div class="n" id="rs">-</div><div class="l">Запущено</div></div>
+<div class="stat"><div class="n" id="dl">-</div><div class="l">Дней</div></div>
+<div class="stat"><div class="n" id="tr">-</div><div class="l">Рестартов</div></div>
 </div>
 <div class="plans">
 <div class="plan"><div class="price">1.99$</div><div class="days">7 дней</div></div>
@@ -660,42 +659,88 @@ textarea{width:100%;background:#111;border:1px solid var(--border);color:#fff;pa
 </div>
 </div>
 <script>
-var uid=new URLSearchParams(location.search).get('user_id');
-var rating=0;
-async function api(u){try{var r=await fetch('/api'+u+'?user_id='+uid);return r.json()}catch(e){return null}}
-function t(tab){
-document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active')});
-event.target.classList.add('active');
-document.getElementById('scriptsTab').style.display=tab==='scripts'?'block':'none';
-document.getElementById('reviewsTab').style.display=tab==='reviews'?'block':'none';
-if(tab==='reviews')L();
+var uid = new URLSearchParams(location.search).get('user_id');
+if (!uid) uid = '314148464';
+var rating = 0;
+
+async function api(u) {
+    try {
+        var r = await fetch('/api' + u + '?user_id=' + uid);
+        return r.json();
+    } catch (e) {
+        console.error(e);
+        return null;
+    }
 }
-function r(n){
-rating=n;
-document.querySelectorAll('#stars span').forEach(function(s,i){s.style.color=i<n?'#ffcc00':'#444'});
+
+function t(tab) {
+    document.querySelectorAll('.tab').forEach(function(x) { x.classList.remove('active'); });
+    event.target.classList.add('active');
+    document.getElementById('scriptsTab').style.display = tab === 'scripts' ? 'block' : 'none';
+    document.getElementById('reviewsTab').style.display = tab === 'reviews' ? 'block' : 'none';
+    if (tab === 'reviews') L();
 }
-async function load(){
-var d=await api('/scripts');
-if(!d){document.getElementById('scriptsList').innerHTML='<p style="color:var(--text2);text-align:center">Ошибка загрузки. Проверьте API.</p>';return}
-document.getElementById('un').textContent=d.user.name||'User';
-document.getElementById('ue').textContent='@'+(d.user.username||'unknown');
-document.getElementById('av').textContent=(d.user.name||'U')[0].toUpperCase();
-document.getElementById('ts').textContent=d.total;
-document.getElementById('rs').textContent=d.running;
-document.getElementById('dl').textContent=d.days_left;
-document.getElementById('tr').textContent=d.total_restarts;
-var h='';
-if(!d.scripts.length)h='<p style="color:var(--text2);text-align:center">Нет скриптов</p>';
-else d.scripts.forEach(function(s){
-h+='<div class="script-row"><div><span class="dot '+(s.status==='running'?'green':'red')+'"></span>'+s.name+'<div style="font-size:11px;color:var(--text2)">'+s.size+'</div></div><div>'+(s.status==='running'?'<button class="btn btn-stop" onclick="a(\'stop\',\''+s.id+'\')">Стоп</button>':'<button class="btn btn-start" onclick="a(\'start\',\''+s.id+'\')">Пуск</button>')+' <button class="btn btn-log" onclick="l(\''+s.id+'\')">Логи</button></div></div><div class="logs" id="log_'+s.id+'"></div>';
-});
-document.getElementById('scriptsList').innerHTML=h;
+
+function r(n) {
+    rating = n;
+    document.querySelectorAll('#stars span').forEach(function(s, i) { s.style.color = i < n ? '#ffcc00' : '#444'; });
 }
-async function a(t,id){await api('/'+t+'&script_id='+id);load()}
-async function l(id){var d=document.getElementById('log_'+id);if(d.style.display==='block'){d.style.display='none';return}var r=await api('/logs&script_id='+id);d.textContent=r.logs||'Нет логов';d.style.display='block'}
-async function L(){var r=await api('/reviews');var c=document.getElementById('reviewsList');if(!r||!r.reviews.length){c.innerHTML='<p style="color:var(--text2);text-align:center">Нет отзывов</p>';return}c.innerHTML=r.reviews.map(function(rv){return'<div class="review-box"><div class="stars">'+'★'.repeat(rv.rating)+'☆'.repeat(5-rv.rating)+'</div><div style="font-weight:600">@'+(rv.username||'user')+'</div><div style="color:var(--text2);font-size:13px">'+rv.text+'</div></div>'}).join('')}
-async function sR(){if(!rating){alert('Выберите оценку!');return}var t=document.getElementById('revText').value.trim();if(!t){alert('Напишите отзыв!');return}await api('/add_review&rating='+rating+'&text='+encodeURIComponent(t));rating=0;document.getElementById('revText').value='';document.querySelectorAll('#stars span').forEach(function(s){s.style.color='#444'});L()}
-load();setInterval(load,15000);
+
+async function load() {
+    var d = await api('/scripts');
+    if (!d) {
+        document.getElementById('scriptsList').innerHTML = '<p style="color:var(--text2);text-align:center">Ошибка загрузки</p>';
+        return;
+    }
+    document.getElementById('un').textContent = d.user.name || 'User';
+    document.getElementById('ue').textContent = '@' + (d.user.username || 'unknown');
+    document.getElementById('av').textContent = (d.user.name || 'U')[0].toUpperCase();
+    document.getElementById('ts').textContent = d.total;
+    document.getElementById('rs').textContent = d.running;
+    document.getElementById('dl').textContent = d.days_left;
+    document.getElementById('tr').textContent = d.total_restarts;
+    
+    var h = '';
+    if (!d.scripts.length) {
+        h = '<p style="color:var(--text2);text-align:center">Нет скриптов</p>';
+    } else {
+        d.scripts.forEach(function(s) {
+            h += '<div class="script-row"><div><span class="dot ' + (s.status === 'running' ? 'green' : 'red') + '"></span>' + s.name + '<div style="font-size:11px;color:var(--text2)">' + s.size + '</div></div><div>' + (s.status === 'running' ? '<button class="btn btn-stop" onclick="a(\'stop\',\'' + s.id + '\')">Стоп</button>' : '<button class="btn btn-start" onclick="a(\'start\',\'' + s.id + '\')">Пуск</button>') + ' <button class="btn btn-log" onclick="l(\'' + s.id + '\')">Логи</button></div></div><div class="logs" id="log_' + s.id + '"></div>';
+        });
+    }
+    document.getElementById('scriptsList').innerHTML = h;
+}
+
+async function a(t, id) { await api('/' + t + '&script_id=' + id); load(); }
+
+async function l(id) {
+    var d = document.getElementById('log_' + id);
+    if (d.style.display === 'block') { d.style.display = 'none'; return; }
+    var r = await api('/logs&script_id=' + id);
+    d.textContent = r ? (r.logs || 'Нет логов') : 'Нет логов';
+    d.style.display = 'block';
+}
+
+async function L() {
+    var r = await api('/reviews');
+    var c = document.getElementById('reviewsList');
+    if (!r || !r.reviews.length) { c.innerHTML = '<p style="color:var(--text2);text-align:center">Нет отзывов</p>'; return; }
+    c.innerHTML = r.reviews.map(function(rv) { return '<div class="review-box"><div class="stars">' + '★'.repeat(rv.rating) + '☆'.repeat(5 - rv.rating) + '</div><div style="font-weight:600">@' + (rv.username || 'user') + '</div><div style="color:var(--text2);font-size:13px">' + rv.text + '</div></div>'; }).join('');
+}
+
+async function sR() {
+    if (!rating) { alert('Выберите оценку!'); return; }
+    var t = document.getElementById('revText').value.trim();
+    if (!t) { alert('Напишите отзыв!'); return; }
+    await api('/add_review&rating=' + rating + '&text=' + encodeURIComponent(t));
+    rating = 0;
+    document.getElementById('revText').value = '';
+    document.querySelectorAll('#stars span').forEach(function(s) { s.style.color = '#444'; });
+    L();
+}
+
+load();
+setInterval(load, 15000);
 </script>
 </body>
 </html>"""
@@ -789,13 +834,21 @@ def run_web():
     HTTPServer(('0.0.0.0', PORT), WebAPI).serve_forever()
 
 if __name__ == '__main__':
-    print(f"🚀 HOSTING v{VERSION}")
+    # Очистка старых соединений
+    print("🔄 Очистка...")
+    try:
+        bot.remove_webhook()
+    except: pass
+    time.sleep(2)
+    
+    print(f"🚀 HOSTING v{VERSION} | Порт: {PORT}")
     threading.Thread(target=monitor, daemon=True).start()
     threading.Thread(target=run_web, daemon=True).start()
+    
     while True:
         try:
             print("✅ Бот запущен!")
-            bot.infinity_polling()
+            bot.infinity_polling(timeout=10, long_polling_timeout=5)
         except Exception as e:
             print(f"❌ {e}")
             time.sleep(10)
