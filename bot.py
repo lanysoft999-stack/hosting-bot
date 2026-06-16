@@ -10,15 +10,14 @@ import subprocess
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
-import urllib.parse
 
 try:
     import telebot
-    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 except ImportError:
     os.system(f'{sys.executable} -m pip install pyTelegramBotAPI --break-system-packages')
     import telebot
-    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 
 try:
     import requests
@@ -26,12 +25,10 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "26.0 NETLIFY"
+VERSION = "27.0 SIMPLE"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
-PORT = int(os.getenv("PORT", "10000"))
-PANEL_URL = "https://profound-lollipop-85406a.netlify.app"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS_DIR = os.path.join(BASE_DIR, "scripts")
@@ -59,10 +56,9 @@ cursor = conn.cursor()
 
 def init_db():
     cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, avatar_url TEXT,
+        user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
         subscription TEXT DEFAULT 'trial', subscription_expiry TIMESTAMP, trial_start TIMESTAMP,
-        referrer_id INTEGER, referral_bonus INTEGER DEFAULT 0,
-        language TEXT DEFAULT 'ru', notifications INTEGER DEFAULT 1)''')
+        referrer_id INTEGER, referral_bonus INTEGER DEFAULT 0)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS scripts (
         id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, name TEXT NOT NULL, path TEXT NOT NULL,
         main_file TEXT, pid INTEGER, status TEXT DEFAULT 'stopped',
@@ -73,12 +69,6 @@ def init_db():
     cursor.execute('''CREATE TABLE IF NOT EXISTS crypto_payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, payment_id TEXT UNIQUE,
         amount REAL, currency TEXT, plan TEXT, status TEXT DEFAULT 'pending')''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS reviews (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT,
-        rating INTEGER, text TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS purchase_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT,
-        plan TEXT, amount REAL, currency TEXT, date TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     for code in ['PREMIUM2024', 'ADMIN', 'MEGA', 'CRYPTO']:
         cursor.execute("INSERT OR IGNORE INTO promocodes VALUES (?, 999, 0)", (code,))
     conn.commit()
@@ -93,18 +83,15 @@ def get_user(user_id):
 def create_user(user_id, username, first_name='', referrer_id=None):
     trial_start = datetime.now()
     trial_end = trial_start + timedelta(days=TRIAL_DAYS)
-    avatar_url = f"https://ui-avatars.com/api/?name={first_name or username or 'User'}&background=667eea&color=fff&size=200"
     try:
-        cursor.execute('INSERT INTO users VALUES (?,?,?,?,?,?,?,?,?,?)',
-                      (user_id, username, first_name, avatar_url, 'trial', trial_end, trial_start, referrer_id, 0, 'ru', 1))
+        cursor.execute('INSERT INTO users VALUES (?,?,?,?,?,?,?,?)',
+                      (user_id, username, first_name, 'trial', trial_end, trial_start, referrer_id, 0))
         conn.commit()
         if referrer_id and referrer_id != user_id:
-            ref = get_user(referrer_id)
-            if ref:
-                cursor.execute("UPDATE users SET referral_bonus = referral_bonus + 3 WHERE user_id = ?", (referrer_id,))
-                exp = datetime.now() + timedelta(days=3)
-                cursor.execute("UPDATE users SET subscription = 'premium', subscription_expiry = ? WHERE user_id = ?", (exp, referrer_id))
-                conn.commit()
+            cursor.execute("UPDATE users SET referral_bonus = referral_bonus + 3 WHERE user_id = ?", (referrer_id,))
+            exp = datetime.now() + timedelta(days=3)
+            cursor.execute("UPDATE users SET subscription = 'premium', subscription_expiry = ? WHERE user_id = ?", (exp, referrer_id))
+            conn.commit()
     except: pass
 
 def is_premium(user_id):
@@ -164,34 +151,9 @@ def get_all_running_scripts():
     cursor.execute("SELECT * FROM scripts WHERE status = 'running'")
     return [dict(row) for row in cursor.fetchall()]
 
-def increment_restart(script_id):
-    cursor.execute('UPDATE scripts SET restart_count = restart_count + 1, total_restarts = total_restarts + 1 WHERE id = ?', (script_id,))
-    conn.commit()
-
-def reset_restart_count(script_id):
-    cursor.execute('UPDATE scripts SET restart_count = 0 WHERE id = ?', (script_id,))
-    conn.commit()
-
 def get_referral_count(user_id):
     cursor.execute('SELECT COUNT(*) as cnt FROM users WHERE referrer_id = ?', (user_id,))
     return cursor.fetchone()['cnt']
-
-def add_review(user_id, username, rating, text):
-    cursor.execute('INSERT INTO reviews (user_id, username, rating, text) VALUES (?,?,?,?)', (user_id, username, rating, text))
-    conn.commit()
-
-def get_reviews(limit=20):
-    cursor.execute('SELECT * FROM reviews ORDER BY created_at DESC LIMIT ?', (limit,))
-    return [dict(row) for row in cursor.fetchall()]
-
-def add_purchase(user_id, username, plan, amount, currency):
-    cursor.execute('INSERT INTO purchase_history (user_id, username, plan, amount, currency) VALUES (?,?,?,?,?)',
-                   (user_id, username, plan, amount, currency))
-    conn.commit()
-
-def get_all_purchases(limit=20):
-    cursor.execute('SELECT * FROM purchase_history ORDER BY date DESC LIMIT ?', (limit,))
-    return [dict(row) for row in cursor.fetchall()]
 
 def find_py_files(folder):
     py_files = []
@@ -207,7 +169,6 @@ def run_script(script_id, script_path):
         with open(log_path, 'a') as f:
             f.write(f"\n🚀 {datetime.now()}\n{'='*40}\n")
             p = subprocess.Popen([sys.executable, script_path], stdout=f, stderr=subprocess.STDOUT, cwd=os.path.dirname(script_path))
-        reset_restart_count(script_id)
         return p.pid, None
     except Exception as e:
         return None, str(e)
@@ -219,9 +180,6 @@ def stop_script(pid):
 def is_process_alive(pid):
     try: os.kill(pid, 0); return True
     except: return False
-
-def get_log_path(script_id):
-    return os.path.join(LOGS_DIR, f"{script_id}.log")
 
 def format_size(s):
     if s < 1024: return f"{s} B"
@@ -236,8 +194,7 @@ def check_user_limits(user_id):
 def create_crypto_invoice(user_id, amount, currency, plan_name):
     url = "https://pay.crypt.bot/api/createInvoice"
     headers = {"Crypto-Pay-API-Token": CRYPTO_TOKEN, "Content-Type": "application/json"}
-    data = {"asset": currency.upper(), "amount": str(amount), "description": f"Hosting Premium - {plan_name}",
-            "payload": json.dumps({"user_id": user_id, "plan": plan_name}), "expires_in": 3600}
+    data = {"asset": currency.upper(), "amount": str(amount), "description": f"Hosting Premium - {plan_name}"}
     try:
         resp = requests.post(url, json=data, headers=headers, timeout=30)
         result = resp.json()
@@ -264,14 +221,11 @@ def check_crypto_payment(payment_id):
 bot = telebot.TeleBot(TOKEN)
 upload_states = {}
 
-def get_host():
-    return os.getenv("RENDER_EXTERNAL_HOSTNAME", f"localhost:{PORT}")
-
 def get_main_menu(user_id=None):
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(KeyboardButton("📱 Мои скрипты"), KeyboardButton("📤 Загрузить"))
     markup.add(KeyboardButton("💎 Премиум"), KeyboardButton("👤 Профиль"))
-    markup.add(KeyboardButton("👥 Рефералы"), KeyboardButton("🌐 Язык"))
+    markup.add(KeyboardButton("👥 Рефералы"))
     if user_id == ADMIN_ID:
         markup.add(KeyboardButton("👑 Админ"), KeyboardButton("🔍 Все скрипты"))
     return markup
@@ -292,40 +246,51 @@ def cmd_start(message):
     elif is_premium(user_id): st = f"💎 Premium: {days}d"
     elif days > 0: st = f"🆓 Trial: {days}d"
     else: st = "🆓 Free"
-    bot.send_message(user_id, f"🚀 **Hosting Bot v{VERSION}**\n\n👤 {st}\n📱 Нажми 👤 Профиль для веб-панели", reply_markup=get_main_menu(user_id), parse_mode='Markdown')
+    bot.send_message(user_id, f"🚀 **Hosting Bot v{VERSION}**\n\n👤 {st}\n📱 Управление скриптами\n💎 Премиум подписка\n👥 Реферальная система", reply_markup=get_main_menu(user_id), parse_mode='Markdown')
 
 @bot.message_handler(func=lambda m: m.text == "👤 Профиль")
 def menu_profile(message):
     user_id = message.from_user.id
-    url = f"{PANEL_URL}?uid={user_id}"
-    
     days = get_days_left(user_id)
     if is_premium(user_id): st = f"💎 Премиум: {days} дн"
     elif days > 0: st = f"🆓 Пробный: {days} дн"
     else: st = "🆓 Бесплатный"
     
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("🌐 Открыть панель в браузере", url=url))
+    scripts = count_user_scripts(user_id)
+    refs = get_referral_count(user_id)
     
     bot.send_message(user_id, 
-        f"👤 **Профиль**\n\n🆔 `{user_id}`\n📊 {st}\n📁 Скриптов: {count_user_scripts(user_id)}\n\n👇 Нажми кнопку:",
-        reply_markup=markup, parse_mode='Markdown')
+        f"👤 **Профиль**\n\n"
+        f"🆔 `{user_id}`\n"
+        f"📊 {st}\n"
+        f"📁 Скриптов: {scripts}/{FREE_MAX_SCRIPTS}\n"
+        f"👥 Рефералов: {refs}\n\n"
+        f"💎 /premium — купить премиум\n"
+        f"📱 /scripts — мои скрипты\n"
+        f"👥 /ref — рефералы",
+        parse_mode='Markdown')
+
+@bot.message_handler(commands=['profile', 'status'])
+def cmd_profile(message):
+    menu_profile(message)
 
 @bot.message_handler(func=lambda m: m.text == "📱 Мои скрипты")
+@bot.message_handler(commands=['scripts', 'list'])
 def menu_scripts(message):
     scripts = get_user_scripts(message.from_user.id)
-    if not scripts: bot.reply_to(message, "📭 Нет скриптов"); return
+    if not scripts: bot.reply_to(message, "📭 Нет скриптов. Отправьте .py файл!"); return
     markup = InlineKeyboardMarkup(row_width=2)
     for s in scripts[:20]:
         emoji = "🟢" if s['status'] == 'running' else "🔴"
-        markup.add(InlineKeyboardButton(f"{emoji} {s['name'][:20]}", callback_data=f"info_{s['id']}"), InlineKeyboardButton("🗑", callback_data=f"delete_{s['id']}"))
+        markup.add(InlineKeyboardButton(f"{emoji} {s['name'][:20]}", callback_data=f"info_{s['id']}"), InlineKeyboardButton("🗑", callback_data=f"del_{s['id']}"))
     bot.send_message(message.chat.id, "📋 **Скрипты:**", reply_markup=markup, parse_mode='Markdown')
 
 @bot.message_handler(func=lambda m: m.text == "📤 Загрузить")
 def menu_upload(message):
-    bot.reply_to(message, "📤 Отправьте .py файл или ZIP!")
+    bot.reply_to(message, "📤 Отправьте .py файл или ZIP архив!")
 
 @bot.message_handler(func=lambda m: m.text == "💎 Премиум")
+@bot.message_handler(commands=['premium', 'buy'])
 def menu_premium(message):
     user_id = message.from_user.id
     if is_premium(user_id): bot.send_message(user_id, f"💎 **Премиум: {get_days_left(user_id)} дн**", parse_mode='Markdown'); return
@@ -356,7 +321,7 @@ def create_invoice(call):
         if url: markup.add(InlineKeyboardButton("💳 Оплатить", url=url))
         markup.add(InlineKeyboardButton("🔄 Проверить", callback_data=f"check_{inv['invoice_id']}_{p['days']}"))
         bot.send_message(call.message.chat.id, f"💰 **Счёт:** {p[cur]} {cur.upper()}\n📅 {p['name']}", reply_markup=markup, parse_mode='Markdown')
-    else: bot.send_message(call.message.chat.id, "❌ Ошибка")
+    else: bot.send_message(call.message.chat.id, "❌ Ошибка создания счёта")
     bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('check_'))
@@ -367,9 +332,7 @@ def check_payment(call):
         cursor.execute("UPDATE crypto_payments SET status = 'paid' WHERE payment_id = ?", (pid,))
         conn.commit()
         activate_premium(call.from_user.id, int(days))
-        u = get_user(call.from_user.id)
-        add_purchase(call.from_user.id, u['username'] if u else 'user', 'Premium', 0, 'USDT')
-        bot.edit_message_text(f"✅ **Оплачено!** 🎉", call.message.chat.id, call.message.message_id, parse_mode='Markdown')
+        bot.edit_message_text(f"✅ **Оплачено! Премиум на {days} дн!** 🎉", call.message.chat.id, call.message.message_id, parse_mode='Markdown')
     elif r and r.get("status") == "active": bot.answer_callback_query(call.id, "⏳ Ожидание...")
     else: bot.answer_callback_query(call.id, "❌ Не оплачено")
 
@@ -383,24 +346,12 @@ def enter_promo(call):
     bot.answer_callback_query(call.id)
 
 @bot.message_handler(func=lambda m: m.text == "👥 Рефералы")
+@bot.message_handler(commands=['ref', 'referral'])
 def menu_ref(message):
     uid = message.from_user.id
     cnt = get_referral_count(uid)
     un = bot.get_me().username
-    bot.send_message(uid, f"👥 **Рефералы**\n\n🔗 `https://t.me/{un}?start=ref{uid}`\n👤 {cnt}", parse_mode='Markdown')
-
-@bot.message_handler(func=lambda m: m.text == "🌐 Язык")
-def menu_lang(message):
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(InlineKeyboardButton("🇷🇺 RU", callback_data="lang_ru"), InlineKeyboardButton("🇬🇧 EN", callback_data="lang_en"))
-    bot.send_message(message.chat.id, "🌐 Язык:", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('lang_'))
-def change_lang(call):
-    cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", (call.data[5:], call.from_user.id))
-    conn.commit()
-    bot.send_message(call.message.chat.id, "✅ Готово!", reply_markup=get_main_menu(call.from_user.id))
-    bot.answer_callback_query(call.id, "✅")
+    bot.send_message(uid, f"👥 **Рефералы**\n\n🔗 `https://t.me/{un}?start=ref{uid}`\n👤 Рефералов: {cnt}\n🎁 Друг получит +7 дн, ты +3 дн!", parse_mode='Markdown')
 
 @bot.message_handler(func=lambda m: m.text == "👑 Админ" and m.from_user.id == ADMIN_ID)
 def menu_admin(message):
@@ -476,7 +427,7 @@ def stop_cb(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('log_'))
 def log_cb(call):
-    lp = get_log_path(call.data[4:])
+    lp = os.path.join(LOGS_DIR, f"{call.data[4:]}.log")
     if os.path.exists(lp):
         with open(lp) as f: c = f.read()[-4000:]
         bot.send_message(call.message.chat.id, f"📜\n```\n{c}\n```", parse_mode='Markdown') if c.strip() else bot.send_message(call.message.chat.id, "📜 Пусто")
@@ -489,7 +440,7 @@ def del_cb(call):
     if s:
         if s.get('pid'): stop_script(s['pid'])
         if os.path.exists(s['path']): shutil.rmtree(s['path'], ignore_errors=True)
-        lp = get_log_path(call.data[4:])
+        lp = os.path.join(LOGS_DIR, f"{call.data[4:]}.log")
         if os.path.exists(lp): os.remove(lp)
         cursor.execute('DELETE FROM scripts WHERE id = ?', (call.data[4:],))
         conn.commit()
@@ -582,102 +533,15 @@ def monitor():
                     if mp and os.path.exists(mp) and s['restart_count'] < 3:
                         time.sleep(5)
                         pid, _ = run_script(s['id'], mp)
-                        if pid: update_script_status(s['id'], 'running', pid); increment_restart(s['id'])
+                        if pid: update_script_status(s['id'], 'running', pid)
                     else: update_script_status(s['id'], 'stopped')
         except: pass
         time.sleep(10)
 
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
-class WebAPI(BaseHTTPRequestHandler):
-    def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
-        params = urllib.parse.parse_qs(parsed.query)
-        
-        if path.startswith('/api/'):
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            
-            user_id = int(params.get('user_id', [0])[0])
-            api_path = path.replace('/api/', '')
-            
-            if api_path.startswith('/scripts'):
-                user = get_user(user_id)
-                scripts = get_user_scripts(user_id)
-                running = len([s for s in scripts if s['status'] == 'running'])
-                result = {
-                    'user': {'name': user['first_name'] if user else 'User', 'username': user['username'] if user else '', 'avatar': user['avatar_url'] if user else '', 'subscription': user['subscription'] if user else 'free'},
-                    'total': len(scripts), 'running': running, 'days_left': get_days_left(user_id),
-                    'total_restarts': sum(s['total_restarts'] for s in scripts),
-                    'scripts': [{'id': s['id'], 'name': s['name'], 'status': s['status'], 'size': format_size(s['size']), 'created': s['created_at'][:10] if s['created_at'] else ''} for s in scripts]
-                }
-                self.wfile.write(json.dumps(result, ensure_ascii=False).encode())
-            
-            elif 'start' in api_path:
-                script_id = params.get('script_id', [''])[0]
-                script = get_script(script_id)
-                if script:
-                    mp = os.path.join(script['path'], script['main_file']) if script.get('main_file') else (find_py_files(script['path'])[0] if find_py_files(script['path']) else None)
-                    if mp: pid, _ = run_script(script_id, mp)
-                    if pid: update_script_status(script_id, 'running', pid)
-                self.wfile.write(b'{"ok":true}')
-            
-            elif 'stop' in api_path:
-                script_id = params.get('script_id', [''])[0]
-                script = get_script(script_id)
-                if script and script.get('pid'): stop_script(script['pid']); update_script_status(script_id, 'stopped')
-                self.wfile.write(b'{"ok":true}')
-            
-            elif 'logs' in api_path:
-                script_id = params.get('script_id', [''])[0]
-                log_path = get_log_path(script_id)
-                logs = ''
-                if os.path.exists(log_path):
-                    with open(log_path, 'r') as f: logs = f.read()[-5000:]
-                self.wfile.write(json.dumps({'logs': logs}, ensure_ascii=False).encode())
-            
-            elif 'reviews' in api_path:
-                reviews = get_reviews(20)
-                self.wfile.write(json.dumps({'reviews': reviews}, ensure_ascii=False).encode())
-            
-            elif 'add_review' in api_path:
-                rating = int(params.get('rating', [5])[0])
-                text = params.get('text', [''])[0]
-                user = get_user(user_id)
-                username = user['username'] if user else 'user'
-                add_review(user_id, username, rating, text)
-                self.wfile.write(b'{"ok":true}')
-            
-            elif 'all_history' in api_path:
-                purchases = get_all_purchases(20)
-                self.wfile.write(json.dumps({'purchases': purchases}, ensure_ascii=False).encode())
-            
-            return
-        
-        self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
-        self.wfile.write(b'OK')
-    
-    def log_message(self, format, *args): pass
-
-def run_web():
-    print(f"🌐 API: http://0.0.0.0:{PORT}")
-    HTTPServer(('0.0.0.0', PORT), WebAPI).serve_forever()
-
 if __name__ == '__main__':
-    print("🔄 Очистка...")
-    try: bot.remove_webhook()
-    except: pass
-    time.sleep(2)
-    
-    print(f"🚀 HOSTING v{VERSION} | Порт: {PORT}")
-    print(f"🌐 Панель: {PANEL_URL}")
+    print(f"🚀 HOSTING v{VERSION}")
+    print("✅ Только бот, без сайта")
     threading.Thread(target=monitor, daemon=True).start()
-    threading.Thread(target=run_web, daemon=True).start()
     
     while True:
         try:
