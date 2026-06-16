@@ -1,8 +1,9 @@
+# syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Установка зависимостей
+# Установка зависимостей БЕЗ кеша
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -12,5 +13,8 @@ COPY bot.py .
 # Создаём папки
 RUN mkdir -p scripts logs temp
 
-# Запускаем бота
+# Порт для health check
+EXPOSE 10000
+
+# Запуск
 CMD ["python", "bot.py"]
