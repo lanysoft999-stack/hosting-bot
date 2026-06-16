@@ -25,7 +25,7 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "29.0 FIXED"
+VERSION = "30.0 FINAL"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
@@ -40,7 +40,7 @@ DATABASE_PATH = os.path.join(BASE_DIR, "hosting.db")
 FREE_MAX_SCRIPTS = 10
 FREE_MAX_SIZE_MB = 10
 PREMIUM_MAX_SIZE_MB = 1024
-TRIAL_DAYS = 7
+TRIAL_DAYS = 3  # Было 7, стало 3
 
 PLANS = {
     '7d': {'name': '7 дней', 'days': 7, 'usdt': 1.99, 'ton': 3.0},
@@ -92,11 +92,9 @@ def get_media(section):
     return dict(row) if row else None
 
 def try_send_media(chat_id, section, text, markup=None):
-    """Отправляет медиа если есть, иначе текст. Возвращает True если медиа отправлено."""
     media = get_media(section)
     if not media:
         return False
-    
     try:
         if media['file_type'] == 'photo':
             bot.send_photo(chat_id, media['file_id'], caption=text, reply_markup=markup, parse_mode='Markdown')
@@ -124,11 +122,6 @@ def create_user(user_id, username, first_name='', referrer_id=None):
         cursor.execute('INSERT INTO users VALUES (?,?,?,?,?,?,?,?)',
                       (user_id, username, first_name, 'trial', trial_end, trial_start, referrer_id, 0))
         conn.commit()
-        if referrer_id and referrer_id != user_id:
-            cursor.execute("UPDATE users SET referral_bonus = referral_bonus + 3 WHERE user_id = ?", (referrer_id,))
-            exp = datetime.now() + timedelta(days=3)
-            cursor.execute("UPDATE users SET subscription = 'premium', subscription_expiry = ? WHERE user_id = ?", (exp, referrer_id))
-            conn.commit()
     except: pass
 
 def is_premium(user_id):
@@ -269,18 +262,54 @@ def get_main_menu(user_id=None):
         markup.add(KeyboardButton("🎨 Оформление"))
     return markup
 
-# ========== СТАРТ ==========
+# ========== СТАРТ С РЕФЕРАЛЬНОЙ СИСТЕМОЙ ==========
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
     user_id = message.from_user.id
     args = message.text.split()
     ref = None
+    
+    # Проверяем реферальную ссылку
     if len(args) > 1 and args[1].startswith('ref'):
         try: ref = int(args[1][3:])
         except: pass
+    
     fn = message.from_user.first_name or ''
     un = message.from_user.username or ''
-    if not get_user(user_id): create_user(user_id, un, fn, ref)
+    
+    # Создаём пользователя если новый
+    if not get_user(user_id):
+        create_user(user_id, un, fn, ref)
+        
+        # Начисляем бонус рефереру
+        if ref and ref != user_id:
+            ref_user = get_user(ref)
+            if ref_user:
+                ref_count = get_referral_count(ref) + 1  # +1 потому что новый ещё не посчитан
+                bonus_minutes = (ref_count // 2) * 5  # 5 минут за каждых 2
+                
+                if bonus_minutes > 0:
+                    if ref_user['subscription'] == 'premium':
+                        old_expiry = datetime.fromisoformat(str(ref_user['subscription_expiry']))
+                        new_expiry = old_expiry + timedelta(minutes=bonus_minutes)
+                    else:
+                        new_expiry = datetime.now() + timedelta(minutes=bonus_minutes)
+                    
+                    cursor.execute("UPDATE users SET subscription = 'premium', subscription_expiry = ? WHERE user_id = ?", 
+                                 (new_expiry, ref))
+                    cursor.execute("UPDATE users SET referral_bonus = referral_bonus + ? WHERE user_id = ?", 
+                                 (bonus_minutes, ref))
+                    conn.commit()
+                    
+                    try:
+                        bot.send_message(ref, 
+                            f"🎁 **Новый реферал!**\n\n"
+                            f"👤 @{un or 'user'}\n"
+                            f"⏱️ +{bonus_minutes} мин премиума\n"
+                            f"👥 Рефералов: {ref_count}",
+                            parse_mode='Markdown')
+                    except: pass
+    
     days = get_days_left(user_id)
     if user_id == ADMIN_ID: st = "👑 Admin"
     elif is_premium(user_id): st = f"💎 Premium: {days}d"
@@ -377,7 +406,7 @@ def menu_ref(message):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
     
-    text = f"👥 **Рефералы**\n\n🔗 `https://t.me/{un}?start=ref{uid}`\n👤 Рефералов: {cnt}\n🎁 Друг +7 дн, ты +3 дн!"
+    text = f"👥 **Рефералы**\n\n🔗 `https://t.me/{un}?start=ref{uid}`\n👤 Рефералов: {cnt}\n🎁 +5 мин за каждых 2 приглашённых!"
     if not try_send_media(uid, 'referral', text, markup):
         bot.send_message(uid, text, reply_markup=markup, parse_mode='Markdown')
 
@@ -687,7 +716,10 @@ def monitor():
 
 if __name__ == '__main__':
     print(f"🚀 HOSTING v{VERSION}")
-    print("🎨 Медиа: ВКЛ | 🔙 Назад: ВКЛ")
+    print(f"⏱️ Trial: {TRIAL_DAYS} дня")
+    print("👥 Рефералы: +5 мин за 2 чел")
+    print("🎨 Медиа: ВКЛ")
+    print("🔙 Назад: ВКЛ")
     threading.Thread(target=monitor, daemon=True).start()
     
     while True:
