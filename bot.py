@@ -15,11 +15,11 @@ import urllib.parse
 # Библиотеки
 try:
     import telebot
-    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, MenuButtonWebApp
 except ImportError:
     os.system(f'{sys.executable} -m pip install pyTelegramBotAPI --break-system-packages')
     import telebot
-    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, MenuButtonWebApp
 
 try:
     import requests
@@ -28,7 +28,7 @@ except ImportError:
     import requests
 
 # ========== КОНФИГУРАЦИЯ ==========
-VERSION = "15.0 WEB PANEL"
+VERSION = "17.0 MENU WEBAPP"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
@@ -111,10 +111,11 @@ init_db()
 # ========== ПЕРЕВОД ==========
 T = {
     'ru': {
-        'welcome': '🚀 **Python Hosting Bot v{}**\n\n👤 Статус: {}\n📦 Загрузка .py / ZIP\n🔄 Автоперезапуск\n💰 Оплата криптой\n👥 Рефералы\n🌐 Веб-панель',
+        'welcome': '🚀 **Python Hosting Bot v{}**\n\n👤 Статус: {}\n📦 Загрузка .py / ZIP\n🔄 Автоперезапуск\n💰 Оплата криптой\n👥 Рефералы\n☰ Меню — веб-панель',
         'scripts': '📱 Мои скрипты', 'upload': '📤 Загрузить', 'premium': '💎 Премиум',
         'status': 'ℹ️ Статус', 'admin': '👑 Админ', 'all_scripts': '🔍 Все скрипты',
         'referral': '👥 Рефералы', 'language': '🌐 Язык', 'web': '🌐 Веб-панель',
+        'web_text': '🌐 **Нажмите ☰ Меню для открытия панели управления**',
         'no_scripts': '📭 Нет скриптов. Отправьте .py файл!',
         'script_list': '📋 **Скрипты:**',
         'premium_active': '💎 **Премиум активен**\n📅 Осталось: {} дн',
@@ -135,14 +136,13 @@ T = {
         'status_premium': '💎 **Премиум: {} дн**',
         'status_trial': '🆓 **Пробный: {} дн**',
         'status_free': '🆓 **Бесплатный**',
-        'referral_info': '👥 **Рефералы**\n\n🔗 Ссылка:\n`https://t.me/{}?start=ref{}`\n\n👤 Рефералов: {}\n🎁 Бонус: {} дн\n\n📋 Друг получит +7 дней, ты +3 дня!',
+        'referral_info': '👥 **Рефералы**\n\n🔗 Ссылка:\n`https://t.me/{}?start=ref{}`\n\n👤 Рефералов: {}\n🎁 Бонус: {} дн',
         'copy_ref': '🔗 Копировать ссылку',
         'ref_copied': '✅ Ссылка отправлена!',
         'lang_select': '🌐 Выберите язык:',
         'lang_changed_ru': '🇷🇺 Русский',
         'lang_changed_en': '🇬🇧 English',
-        'web_panel': '🌐 **Веб-панель:**\n[Открыть панель](https://{}/panel?user_id={})',
-        'help': '🆘 /start /list /promo /referral /lang /web',
+        'help': '🆘 /start /list /promo /referral /lang',
         'script_started': '✅ **Запущен!**\n📄 {}\n🆔 `{}`',
         'logs_empty': '📜 Логи пустые',
         'logs_not_found': '📜 Логов нет',
@@ -170,10 +170,11 @@ T = {
         'notification_trial_extended': '🎁 **Триал продлён на 3 дня!**',
     },
     'en': {
-        'welcome': '🚀 **Python Hosting Bot v{}**\n\n👤 Status: {}\n📦 Upload .py / ZIP\n🔄 Auto-restart\n💰 Crypto\n👥 Referrals\n🌐 Web Panel',
+        'welcome': '🚀 **Python Hosting Bot v{}**\n\n👤 Status: {}\n📦 Upload .py / ZIP\n🔄 Auto-restart\n💰 Crypto\n👥 Referrals\n☰ Menu — Web Panel',
         'scripts': '📱 My Scripts', 'upload': '📤 Upload', 'premium': '💎 Premium',
         'status': 'ℹ️ Status', 'admin': '👑 Admin', 'all_scripts': '🔍 All Scripts',
         'referral': '👥 Referrals', 'language': '🌐 Language', 'web': '🌐 Web Panel',
+        'web_text': '🌐 **Press ☰ Menu to open control panel**',
         'no_scripts': '📭 No scripts. Send .py file!',
         'script_list': '📋 **Scripts:**',
         'premium_active': '💎 **Premium Active**\n📅 Left: {} days',
@@ -194,14 +195,13 @@ T = {
         'status_premium': '💎 **Premium: {}d**',
         'status_trial': '🆓 **Trial: {}d**',
         'status_free': '🆓 **Free**',
-        'referral_info': '👥 **Referrals**\n\n🔗 Link:\n`https://t.me/{}?start=ref{}`\n\n👤 Referrals: {}\n🎁 Bonus: {}d\n\n📋 Friend +7d, you +3d!',
+        'referral_info': '👥 **Referrals**\n\n🔗 Link:\n`https://t.me/{}?start=ref{}`\n\n👤 Referrals: {}\n🎁 Bonus: {}d',
         'copy_ref': '🔗 Copy link',
         'ref_copied': '✅ Link sent!',
         'lang_select': '🌐 Choose language:',
         'lang_changed_ru': '🇷🇺 Russian',
         'lang_changed_en': '🇬🇧 English',
-        'web_panel': '🌐 **Web Panel:**\n[Open Panel](https://{}/panel?user_id={})',
-        'help': '🆘 /start /list /promo /referral /lang /web',
+        'help': '🆘 /start /list /promo /referral /lang',
         'script_started': '✅ **Started!**\n📄 {}\n🆔 `{}`',
         'logs_empty': '📜 Logs empty',
         'logs_not_found': '📜 No logs',
@@ -424,14 +424,18 @@ def check_crypto_payment(payment_id):
 bot = telebot.TeleBot(TOKEN)
 upload_states = {}
 
+def get_host():
+    return os.getenv("RENDER_EXTERNAL_HOSTNAME", "localhost:10000")
+
 def get_main_menu(user_id=None):
     user = get_user(user_id) if user_id else None
     lang = user['language'] if user else 'ru'
+    
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(KeyboardButton(T[lang]['scripts']), KeyboardButton(T[lang]['upload']))
     markup.add(KeyboardButton(T[lang]['premium']), KeyboardButton(T[lang]['status']))
     markup.add(KeyboardButton(T[lang]['referral']), KeyboardButton(T[lang]['language']))
-    markup.add(KeyboardButton(T[lang]['web']))
+    
     if user_id == ADMIN_ID:
         markup.add(KeyboardButton(T[lang]['admin']), KeyboardButton(T[lang]['all_scripts']))
     return markup
@@ -460,17 +464,25 @@ def cmd_start(message):
     elif days > 0: status = f"🆓 Trial: {days}d"
     else: status = "🆓 Free"
     
+    # Устанавливаем Menu Button для пользователя
+    host = get_host()
+    try:
+        bot.set_chat_menu_button(
+            chat_id=user_id,
+            menu_button=MenuButtonWebApp(
+                text="🚀 Панель",
+                web_app=WebAppInfo(url=f"https://{host}/panel?user_id={user_id}")
+        ))
+    except: pass
+    
     bot.send_message(user_id, t(user_id, 'welcome', VERSION, status), reply_markup=get_main_menu(user_id), parse_mode='Markdown')
-
-@bot.message_handler(commands=['web', 'panel'])
-def cmd_web(message):
-    host = os.getenv("RENDER_EXTERNAL_HOSTNAME", "localhost:10000")
-    bot.send_message(message.chat.id, t(message.from_user.id, 'web_panel', host, message.from_user.id), parse_mode='Markdown', disable_web_page_preview=False)
+    bot.send_message(user_id, t(user_id, 'web_text'), parse_mode='Markdown')
 
 @bot.message_handler(commands=['help'])
 def cmd_help(message):
     bot.send_message(message.chat.id, t(message.from_user.id, 'help'), parse_mode='Markdown')
 
+# ========== МЕНЮ ==========
 @bot.message_handler(func=lambda m: m.text in [T['ru']['scripts'], T['en']['scripts']])
 def menu_scripts(message):
     scripts = get_user_scripts(message.from_user.id)
@@ -545,10 +557,6 @@ def change_language(call):
     conn.commit()
     bot.send_message(call.message.chat.id, t(call.from_user.id, f'lang_changed_{lang}'), reply_markup=get_main_menu(call.from_user.id))
     bot.answer_callback_query(call.id, "✅")
-
-@bot.message_handler(func=lambda m: m.text in [T['ru']['web'], T['en']['web']])
-def menu_web(message):
-    cmd_web(message)
 
 @bot.message_handler(func=lambda m: m.text in [T['ru']['admin'], T['en']['admin']] and m.from_user.id == ADMIN_ID)
 def menu_admin(message):
@@ -686,8 +694,8 @@ def admin_script_callback(call):
 def tag_callback(call):
     script = get_script(call.data[4:])
     if not script: bot.answer_callback_query(call.id, "❌"); return
-    msg = bot.send_message(call.message.chat.id, "🏷️ Отправьте теги через запятую:\nНапример: `бот, спам`")
-    bot.register_next_step_handler(msg, lambda m: update_script_tags(call.data[4:], m.text.strip()) or bot.reply_to(m, f"✅ Теги: {m.text}"))
+    msg = bot.send_message(call.message.chat.id, "🏷️ Отправьте теги через запятую:")
+    bot.register_next_step_handler(msg, lambda m: update_script_tags(call.data[4:], m.text.strip()) or bot.reply_to(m, f"✅ {m.text}"))
     bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('start_'))
@@ -867,23 +875,12 @@ WEB_PANEL_HTML = r"""
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Python Hosting Panel</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
     <style>
         :root {
-            --bg: #0f0f1a;
-            --card: #1a1a2e;
-            --accent: #667eea;
-            --accent2: #764ba2;
-            --green: #4CAF50;
-            --red: #f44336;
-            --blue: #2196F3;
-            --text: #e0e0e0;
-            --text2: #a0a0b0;
-            --border: #2a2a3e;
-            --radius: 16px;
-            --shadow: 0 8px 32px rgba(0,0,0,0.3);
+            --bg: #0f0f1a; --card: #1a1a2e; --accent: #667eea; --accent2: #764ba2;
+            --green: #4CAF50; --red: #f44336; --blue: #2196F3;
+            --text: #e0e0e0; --text2: #a0a0b0; --border: #2a2a3e;
+            --radius: 16px; --shadow: 0 8px 32px rgba(0,0,0,0.3);
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -896,172 +893,100 @@ WEB_PANEL_HTML = r"""
                 radial-gradient(ellipse at 80% 80%, rgba(118, 75, 162, 0.1) 0%, transparent 50%);
         }
         .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
-        
-        /* Header */
         .header {
-            background: var(--card);
-            border-radius: var(--radius);
-            padding: 30px;
-            margin-bottom: 24px;
-            box-shadow: var(--shadow);
-            border: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 20px;
+            background: var(--card); border-radius: var(--radius);
+            padding: 30px; margin-bottom: 24px; box-shadow: var(--shadow);
+            border: 1px solid var(--border); display: flex; align-items: center; gap: 20px;
         }
         .avatar {
-            width: 80px; height: 80px;
-            border-radius: 50%;
-            border: 3px solid var(--accent);
-            box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+            width: 80px; height: 80px; border-radius: 50%;
+            border: 3px solid var(--accent); box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
         }
         .user-info h1 { font-size: 24px; font-weight: 700; }
         .user-info .nick { color: var(--text2); font-size: 14px; }
         .badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            margin-top: 8px;
+            display: inline-block; padding: 4px 12px; border-radius: 20px;
+            font-size: 12px; font-weight: 600; margin-top: 8px;
         }
         .badge.premium { background: linear-gradient(135deg, #f7971e, #ffd200); color: #000; }
         .badge.trial { background: var(--accent); color: #fff; }
         .badge.free { background: var(--border); color: var(--text2); }
-        
-        /* Stats */
         .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px; margin-bottom: 24px;
         }
         .stat-card {
-            background: var(--card);
-            border-radius: var(--radius);
-            padding: 24px;
-            text-align: center;
-            box-shadow: var(--shadow);
-            border: 1px solid var(--border);
+            background: var(--card); border-radius: var(--radius); padding: 24px;
+            text-align: center; box-shadow: var(--shadow); border: 1px solid var(--border);
             transition: transform 0.2s;
         }
         .stat-card:hover { transform: translateY(-4px); }
-        .stat-card .number { font-size: 42px; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .stat-card .number {
+            font-size: 42px; font-weight: 700;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
         .stat-card .label { color: var(--text2); margin-top: 8px; font-size: 14px; }
-        
-        /* Card */
         .card {
-            background: var(--card);
-            border-radius: var(--radius);
-            padding: 24px;
-            margin-bottom: 24px;
-            box-shadow: var(--shadow);
-            border: 1px solid var(--border);
+            background: var(--card); border-radius: var(--radius); padding: 24px;
+            margin-bottom: 24px; box-shadow: var(--shadow); border: 1px solid var(--border);
         }
-        .card h2 {
-            font-size: 18px;
-            margin-bottom: 20px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        /* Script item */
+        .card h2 { font-size: 18px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
         .script-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px;
-            border-radius: 12px;
-            margin-bottom: 8px;
-            background: rgba(255,255,255,0.02);
-            transition: background 0.2s;
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px; border-radius: 12px; margin-bottom: 8px;
+            background: rgba(255,255,255,0.02); transition: background 0.2s;
         }
         .script-item:hover { background: rgba(255,255,255,0.05); }
         .script-left { display: flex; align-items: center; gap: 12px; }
         .status-dot {
-            width: 12px; height: 12px;
-            border-radius: 50%;
-            flex-shrink: 0;
+            width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
         }
         .status-dot.running { background: var(--green); box-shadow: 0 0 10px rgba(76,175,80,0.5); }
         .status-dot.stopped { background: var(--red); }
         .script-name { font-weight: 600; }
         .script-meta { font-size: 12px; color: var(--text2); }
         .script-actions { display: flex; gap: 8px; }
-        
-        /* Buttons */
         .btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-            font-family: 'Inter', sans-serif;
-            transition: all 0.2s;
+            padding: 8px 16px; border: none; border-radius: 8px;
+            cursor: pointer; font-size: 13px; font-weight: 600;
+            font-family: 'Inter', sans-serif; transition: all 0.2s;
         }
         .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
         .btn-start { background: var(--green); color: white; }
         .btn-stop { background: var(--red); color: white; }
         .btn-logs { background: var(--blue); color: white; }
-        .btn-delete { background: #555; color: white; }
-        
-        /* Logs */
         .log-content {
-            background: #1a1a2e;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 16px;
-            font-family: 'Fira Code', 'Courier New', monospace;
-            font-size: 12px;
-            max-height: 300px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            color: #00ff88;
-            margin-top: 8px;
-            display: none;
+            background: #1a1a2e; border: 1px solid var(--border); border-radius: 12px;
+            padding: 16px; font-family: 'Fira Code', monospace; font-size: 12px;
+            max-height: 300px; overflow-y: auto; white-space: pre-wrap;
+            color: #00ff88; margin-top: 8px; display: none;
         }
         .log-content.show { display: block; }
-        
-        /* Plans */
         .plans {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px;
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;
         }
         .plan-card {
             background: linear-gradient(135deg, var(--accent), var(--accent2));
-            color: white;
-            border-radius: var(--radius);
-            padding: 24px;
-            text-align: center;
-            transition: transform 0.2s;
+            color: white; border-radius: var(--radius); padding: 24px;
+            text-align: center; transition: transform 0.2s;
         }
         .plan-card:hover { transform: scale(1.05); }
         .plan-card h3 { margin-bottom: 8px; }
         .plan-card .price { font-size: 36px; font-weight: 700; }
         .plan-card .period { opacity: 0.8; font-size: 14px; }
-        
-        /* Loading */
         .loading { text-align: center; padding: 40px; color: var(--text2); }
         .spinner {
-            width: 40px; height: 40px;
-            border: 3px solid var(--border);
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin: 0 auto 16px;
+            width: 40px; height: 40px; border: 3px solid var(--border);
+            border-top-color: var(--accent); border-radius: 50%;
+            animation: spin 0.8s linear infinite; margin: 0 auto 16px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        
-        /* Responsive */
         @media (max-width: 600px) {
             .script-item { flex-direction: column; gap: 12px; align-items: flex-start; }
             .script-actions { width: 100%; justify-content: flex-end; }
             .header { flex-direction: column; text-align: center; }
         }
-        
-        /* Scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: var(--bg); }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -1072,77 +997,47 @@ WEB_PANEL_HTML = r"""
         <div class="header" id="header">
             <div class="loading"><div class="spinner"></div>Загрузка...</div>
         </div>
-        
         <div class="stats" id="stats">
-            <div class="stat-card">
-                <div class="number" id="totalScripts">-</div>
-                <div class="label">Всего скриптов</div>
-            </div>
-            <div class="stat-card">
-                <div class="number" id="runningScripts">-</div>
-                <div class="label">Запущено</div>
-            </div>
-            <div class="stat-card">
-                <div class="number" id="daysLeft">-</div>
-                <div class="label">Дней подписки</div>
-            </div>
-            <div class="stat-card">
-                <div class="number" id="totalRestarts">-</div>
-                <div class="label">Перезапусков</div>
-            </div>
+            <div class="stat-card"><div class="number" id="totalScripts">-</div><div class="label">Всего скриптов</div></div>
+            <div class="stat-card"><div class="number" id="runningScripts">-</div><div class="label">Запущено</div></div>
+            <div class="stat-card"><div class="number" id="daysLeft">-</div><div class="label">Дней подписки</div></div>
+            <div class="stat-card"><div class="number" id="totalRestarts">-</div><div class="label">Перезапусков</div></div>
         </div>
-        
         <div class="card">
             <h2>📱 Мои скрипты</h2>
-            <div id="scriptsList"><div class="loading"><div class="spinner"></div>Загрузка скриптов...</div></div>
+            <div id="scriptsList"><div class="loading"><div class="spinner"></div>Загрузка...</div></div>
         </div>
-        
         <div class="card">
             <h2>💎 Тарифы</h2>
             <div class="plans">
                 <div class="plan-card"><h3>7 дней</h3><div class="price">1.99$</div><div class="period">USDT</div></div>
                 <div class="plan-card"><h3>30 дней</h3><div class="price">4.99$</div><div class="period">USDT</div></div>
                 <div class="plan-card"><h3>60 дней</h3><div class="price">7.99$</div><div class="period">USDT</div></div>
-                <div class="plan-card"><h3>Навсегда</h3><div class="price">14.99$</div><div class="period">VIP</div></div>
+                <div class="plan-card"><h3>VIP</h3><div class="price">14.99$</div><div class="period">Навсегда</div></div>
             </div>
         </div>
     </div>
-    
     <script>
         const params = new URLSearchParams(window.location.search);
         const userId = params.get('user_id');
-        
-        async function api(path) {
-            const resp = await fetch(`/api${path}?user_id=${userId}`);
-            return resp.json();
-        }
-        
+        async function api(path) { const resp = await fetch(`/api${path}?user_id=${userId}`); return resp.json(); }
         async function loadAll() {
             try {
                 const data = await api('/scripts');
-                
-                // Header
-                const header = document.getElementById('header');
-                header.innerHTML = `
-                    <img src="${data.user.avatar || 'https://ui-avatars.com/api/?name=User&background=667eea&color=fff&size=200'}" 
-                         class="avatar" alt="Avatar" onerror="this.src='https://ui-avatars.com/api/?name=User&background=667eea&color=fff&size=200'">
+                document.getElementById('header').innerHTML = `
+                    <img src="${data.user.avatar || 'https://ui-avatars.com/api/?name=User&background=667eea&color=fff&size=200'}" class="avatar" onerror="this.src='https://ui-avatars.com/api/?name=User&background=667eea&color=fff&size=200'">
                     <div class="user-info">
                         <h1>${data.user.name || 'Пользователь'}</h1>
                         <div class="nick">@${data.user.username || 'unknown'}</div>
                         <span class="badge ${data.user.subscription}">${data.user.subscription === 'premium' ? '💎 Премиум' : data.user.subscription === 'trial' ? '🆓 Пробный' : 'Бесплатный'}</span>
-                    </div>
-                `;
-                
-                // Stats
+                    </div>`;
                 document.getElementById('totalScripts').textContent = data.total;
                 document.getElementById('runningScripts').textContent = data.running;
                 document.getElementById('daysLeft').textContent = data.days_left;
                 document.getElementById('totalRestarts').textContent = data.total_restarts;
-                
-                // Scripts
                 let html = '';
                 if (data.scripts.length === 0) {
-                    html = '<div style="text-align:center;padding:30px;color:var(--text2)">📭 Нет скриптов. Загрузите через бота!</div>';
+                    html = '<div style="text-align:center;padding:30px;color:var(--text2)">📭 Нет скриптов</div>';
                 } else {
                     data.scripts.forEach(s => {
                         html += `
@@ -1151,46 +1046,31 @@ WEB_PANEL_HTML = r"""
                                     <span class="status-dot ${s.status}"></span>
                                     <div>
                                         <div class="script-name">${s.name} ${s.tags ? `<span style="color:var(--accent);font-size:12px">[${s.tags}]</span>` : ''}</div>
-                                        <div class="script-meta">${s.size} • Перезапусков: ${s.restarts} • ${s.created}</div>
+                                        <div class="script-meta">${s.size} • ${s.created}</div>
                                     </div>
                                 </div>
                                 <div class="script-actions">
                                     ${s.status === 'running' 
                                         ? `<button class="btn btn-stop" onclick="action('stop','${s.id}')">🛑 Стоп</button>`
-                                        : `<button class="btn btn-start" onclick="action('start','${s.id}')">🚀 Запустить</button>`
-                                    }
+                                        : `<button class="btn btn-start" onclick="action('start','${s.id}')">🚀 Запустить</button>`}
                                     <button class="btn btn-logs" onclick="toggleLogs('${s.id}')">📜 Логи</button>
                                 </div>
                             </div>
-                            <div class="log-content" id="logs_${s.id}"></div>
-                        `;
+                            <div class="log-content" id="logs_${s.id}"></div>`;
                     });
                 }
                 document.getElementById('scriptsList').innerHTML = html;
-            } catch(e) {
-                console.error(e);
-                document.getElementById('scriptsList').innerHTML = '<div style="color:var(--red);text-align:center;padding:20px">❌ Ошибка загрузки</div>';
-            }
+            } catch(e) { console.error(e); }
         }
-        
-        async function action(type, id) {
-            await api(`/${type}&script_id=${id}`);
-            loadAll();
-        }
-        
+        async function action(type, id) { await api(`/${type}&script_id=${id}`); loadAll(); }
         async function toggleLogs(id) {
             const div = document.getElementById(`logs_${id}`);
-            if (div.classList.contains('show')) {
-                div.classList.remove('show');
-                return;
-            }
+            if (div.classList.contains('show')) { div.classList.remove('show'); return; }
             const data = await api(`/logs&script_id=${id}`);
             div.textContent = data.logs || 'Логов нет';
             div.classList.add('show');
         }
-        
-        loadAll();
-        setInterval(loadAll, 15000);
+        loadAll(); setInterval(loadAll, 15000);
     </script>
 </body>
 </html>
@@ -1234,16 +1114,11 @@ class WebAPI(BaseHTTPRequestHandler):
                         'avatar': user['avatar_url'] if user else '',
                         'subscription': user['subscription'] if user else 'free'
                     },
-                    'total': len(scripts),
-                    'running': running,
-                    'days_left': days,
-                    'total_restarts': total_restarts,
-                    'scripts': [{
-                        'id': s['id'], 'name': s['name'],
-                        'status': s['status'], 'size': format_size(s['size']),
-                        'restarts': s['total_restarts'], 'tags': s.get('tags', ''),
-                        'created': s['created_at'][:10] if s['created_at'] else ''
-                    } for s in scripts]
+                    'total': len(scripts), 'running': running,
+                    'days_left': days, 'total_restarts': total_restarts,
+                    'scripts': [{'id': s['id'], 'name': s['name'], 'status': s['status'],
+                                 'size': format_size(s['size']), 'restarts': s['total_restarts'],
+                                 'tags': s.get('tags', ''), 'created': s['created_at'][:10] if s['created_at'] else ''} for s in scripts]
                 }
                 self.wfile.write(json.dumps(result, ensure_ascii=False).encode())
             
@@ -1252,17 +1127,15 @@ class WebAPI(BaseHTTPRequestHandler):
                 script = get_script(script_id)
                 if script:
                     main_path = os.path.join(script['path'], script['main_file']) if script.get('main_file') else (find_py_files(script['path'])[0] if find_py_files(script['path']) else None)
-                    if main_path:
-                        pid, _ = run_script(script_id, main_path)
-                        if pid: update_script_status(script_id, 'running', pid)
+                    if main_path: pid, _ = run_script(script_id, main_path)
+                    if pid: update_script_status(script_id, 'running', pid)
                 self.wfile.write(json.dumps({'ok': True}).encode())
             
             elif 'stop' in api_path:
                 script_id = params.get('script_id', [''])[0]
                 script = get_script(script_id)
                 if script and script.get('pid'):
-                    stop_script(script['pid'])
-                    update_script_status(script_id, 'stopped')
+                    stop_script(script['pid']); update_script_status(script_id, 'stopped')
                 self.wfile.write(json.dumps({'ok': True}).encode())
             
             elif 'logs' in api_path:
@@ -1285,7 +1158,7 @@ class WebAPI(BaseHTTPRequestHandler):
 def run_web_panel():
     port = int(os.getenv("PORT", "10000"))
     server = HTTPServer(('0.0.0.0', port), WebAPI)
-    print(f"🌐 Веб-панель: http://0.0.0.0:{port}/panel?user_id=ТВОЙ_ID")
+    print(f"🌐 Веб-панель: http://0.0.0.0:{port}/panel")
     server.serve_forever()
 
 # ========== ЗАПУСК ==========
@@ -1293,10 +1166,8 @@ if __name__ == '__main__':
     print("=" * 50)
     print(f"  🚀 HOSTING v{VERSION}")
     print(f"  👑 Admin: {ADMIN_ID}")
+    print(f"  ☰ Menu WebApp: ON")
     print(f"  🌐 Web Panel: ON")
-    print(f"  👥 Referral: ON")
-    print(f"  🔔 Notify: ON")
-    print(f"  🌐 RU/EN: ON")
     print("=" * 50)
     
     threading.Thread(target=monitor, daemon=True).start()
