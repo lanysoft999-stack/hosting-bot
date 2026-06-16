@@ -26,7 +26,7 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "21.0 FINAL"
+VERSION = "22.0 WORKING"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
@@ -293,13 +293,17 @@ def cmd_start(message):
     else: st = "🆓 Free"
     bot.send_message(user_id, f"🚀 **Hosting Bot v{VERSION}**\n\n👤 {st}\n📱 Нажми 👤 Профиль для веб-панели", reply_markup=get_main_menu(user_id), parse_mode='Markdown')
 
+# ========== КНОПКА ПРОФИЛЬ ==========
 @bot.message_handler(func=lambda m: m.text == "👤 Профиль")
 def menu_profile(message):
     user_id = message.from_user.id
     host = get_host()
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("🚀 Открыть панель управления", web_app=WebAppInfo(url=f"https://{host}/panel")))
-    bot.send_message(user_id, "👤", reply_markup=markup)
+    markup.add(InlineKeyboardButton(
+        "🚀 Открыть панель управления",
+        web_app=WebAppInfo(url=f"https://{host}/panel?uid={user_id}")
+    ))
+    bot.send_message(message.chat.id, "👤", reply_markup=markup)
 
 @bot.message_handler(func=lambda m: m.text == "📱 Мои скрипты")
 def menu_scripts(message):
@@ -579,36 +583,45 @@ def monitor():
 
 # ========== ВЕБ-ПАНЕЛЬ ==========
 WEB_HTML = r"""<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover"><title>Hosting Panel</title><script src="https://telegram.org/js/telegram-web-app.js"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"><style>:root{--bg:#06060e;--surface:#0f0f23;--surface2:#161630;--surface3:#1e1e40;--text:#ffffff;--text2:#c8c8e0;--text3:#8888a8;--border:#282850;--accent:#667eea;--green:#34c759;--gold:#ffcc00;--blue:#007aff;--purple:#af52de;--red:#ff3b30}*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;background:var(--bg);min-height:100vh;padding:12px;color:var(--text)}.app{max-width:440px;margin:0 auto}.header{display:flex;align-items:center;gap:10px;padding:8px 0 18px}.avatar{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--purple));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:17px;background-size:cover;background-position:center;overflow:hidden;flex-shrink:0;box-shadow:0 4px 15px rgba(102,126,234,0.3)}.avatar img{width:100%;height:100%;object-fit:cover;border-radius:14px}.header-name{color:#fff;font-weight:700;font-size:15px}.header-email{color:var(--text2);font-size:11px}.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px}.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;text-align:center}.stat-card .number{font-size:28px;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}.stat-card .label{color:var(--text3);font-size:12px}.tabs{display:flex;gap:8px;margin-bottom:16px}.tab{padding:10px 20px;border:none;border-radius:20px;cursor:pointer;font-weight:700;font-size:14px;background:var(--surface);color:var(--text);border:1px solid var(--border);font-family:'Inter',sans-serif}.tab.active{background:linear-gradient(135deg,var(--accent),var(--purple));color:#fff;border-color:transparent}.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px;margin-bottom:16px}.section-title{color:#fff;font-size:16px;font-weight:700;margin-bottom:12px}.script-item{display:flex;justify-content:space-between;align-items:center;padding:14px;border-radius:14px;margin-bottom:8px;background:var(--surface2);border:1px solid var(--border)}.status-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px}.status-dot.running{background:var(--green);box-shadow:0 0 10px rgba(52,199,89,0.5)}.status-dot.stopped{background:var(--red)}.script-name{font-weight:600;font-size:14px}.script-meta{font-size:11px;color:var(--text3)}.btn{padding:10px 16px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:700;color:#fff;font-family:'Inter',sans-serif}.btn:active{transform:scale(.95)}.btn-start{background:linear-gradient(135deg,var(--green),#16a34a)}.btn-stop{background:linear-gradient(135deg,var(--red),#c00)}.btn-logs{background:linear-gradient(135deg,var(--blue),#0056d6)}.btn-submit{background:linear-gradient(135deg,var(--accent),var(--purple));width:100%;padding:12px;font-size:14px}.log-content{background:#111;border-radius:10px;padding:12px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto;color:#0f0;margin-top:8px;display:none;white-space:pre-wrap;border:1px solid var(--border)}.log-content.show{display:block}.live-box{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:14px;margin-bottom:18px}.live-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}.live-dot{width:8px;height:8px;background:var(--green);border-radius:50%;animation:onlinePulse 2s infinite}@keyframes onlinePulse{0%,100%{box-shadow:0 0 0 0 rgba(52,199,89,0.6)}50%{box-shadow:0 0 0 8px rgba(52,199,89,0)}}.live-text{color:var(--green);font-size:12px;font-weight:700}.live-counter{color:var(--text3);font-size:11px;margin-left:auto}.live-scroll{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}.live-scroll::-webkit-scrollbar{display:none}.purchase-mini{display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:10px 14px;white-space:nowrap;flex-shrink:0}.purchase-mini-avatar{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--purple));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0}.purchase-mini-name{color:#fff;font-weight:600;font-size:13px}.purchase-mini-detail{color:var(--text2);font-size:10px}.purchase-mini-price{color:#ffcc00;font-weight:800;font-size:15px}.purchase-mini-time{color:var(--text3);font-size:9px}.rating-block{text-align:center}.rating-big{font-size:48px;font-weight:900;color:#ffcc00}.rating-stars-row{display:flex;gap:4px;justify-content:center;margin:8px 0}.rating-count{color:var(--text2);font-size:14px}.review-item{background:var(--surface2);border-radius:14px;padding:14px;margin-bottom:8px;display:flex;gap:12px}.review-avatar{width:40px;height:40px;min-width:40px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--purple));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px}.review-name{color:#fff;font-weight:600;font-size:14px}.review-stars-sm{color:#ffcc00;font-size:12px}.review-text{color:var(--text2);font-size:13px;margin-top:4px}.stars-vote{display:flex;gap:6px;justify-content:center;margin:12px 0}.star-btn{font-size:36px;color:#444;cursor:pointer;background:none;border:none}.star-btn.active{color:#ffcc00}.input-field{width:100%;background:var(--surface2);border:1px solid var(--border);color:#fff;padding:12px;border-radius:10px;font-size:14px;font-family:'Inter',sans-serif;resize:vertical;min-height:60px;margin-bottom:8px}.input-field:focus{outline:none;border-color:var(--accent)}.empty{text-align:center;padding:20px;color:var(--text3);font-size:14px}.toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(100px);background:#2a2a2a;color:#fff;padding:14px 20px;border-radius:14px;font-size:14px;opacity:0;transition:all .4s ease;z-index:4000;font-weight:600}.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}</style></head><body><div class="app"><div class="header"><div class="avatar" id="homeAvatar">A</div><div><div class="header-name" id="homeName">Загрузка...</div><div class="header-email" id="homeEmail">-</div></div></div><div class="stats"><div class="stat-card"><div class="number" id="totalScripts">-</div><div class="label">Скриптов</div></div><div class="stat-card"><div class="number" id="runningScripts">-</div><div class="label">Запущено</div></div><div class="stat-card"><div class="number" id="daysLeft">-</div><div class="label">Дней</div></div><div class="stat-card"><div class="number" id="totalRestarts">-</div><div class="label">Рестартов</div></div></div><div class="live-box"><div class="live-header"><div class="live-dot"></div><div class="live-text">LIVE ПОКУПКИ</div><div class="live-counter" id="purchaseCounter">0</div></div><div class="live-scroll" id="livePurchasesScroll"><div class="empty">Загрузка...</div></div></div><div class="tabs"><button class="tab active" onclick="switchTab('scripts')">📱 Скрипты</button><button class="tab" onclick="switchTab('reviews')">⭐ Отзывы</button></div><div id="tab-scripts"><div class="card"><div class="section-title">📱 Мои скрипты</div><div id="scriptsList"><div class="empty">Загрузка...</div></div></div></div><div id="tab-reviews" style="display:none"><div class="card rating-block"><div class="section-title">Рейтинг</div><div class="rating-big" id="ratingBig">0.0</div><div class="rating-stars-row" id="ratingStarsRow"></div><div class="rating-count" id="ratingCount">0 отзывов</div></div><div class="card"><div class="section-title">✍️ Отзыв</div><div class="stars-vote" id="ratingStarsVote"><button class="star-btn" onclick="setRating(1)"><i class="fas fa-star"></i></button><button class="star-btn" onclick="setRating(2)"><i class="fas fa-star"></i></button><button class="star-btn" onclick="setRating(3)"><i class="fas fa-star"></i></button><button class="star-btn" onclick="setRating(4)"><i class="fas fa-star"></i></button><button class="star-btn" onclick="setRating(5)"><i class="fas fa-star"></i></button></div><textarea class="input-field" id="reviewText" placeholder="Напишите отзыв..."></textarea><button class="btn btn-submit" onclick="submitReview()"><i class="fas fa-paper-plane"></i> Отправить</button><div id="reviewsList" style="margin-top:12px"></div></div></div></div><div class="toast" id="toast"></div><script>
-const tg = window.Telegram.WebApp;
-tg.ready();
-tg.expand();
+// Получаем uid из URL (прямая передача)
+var uid = null;
+var ps = new URLSearchParams(location.search);
+uid = ps.get('uid');
 
-let uid = null;
-try { uid = tg.initDataUnsafe?.user?.id; } catch(e) {}
-if (!uid) { uid = new URLSearchParams(location.search).get('user_id'); }
-
+// Если нет в URL - пробуем Telegram
 if (!uid) {
-    document.body.innerHTML = '<div style="color:#fff;text-align:center;padding:40px"><h2>❌ Ошибка</h2><p>Не удалось получить ID</p><p>Откройте панель через бота</p></div>';
+    try {
+        var tg = window.Telegram.WebApp;
+        tg.ready();
+        uid = tg.initDataUnsafe?.user?.id;
+    } catch(e) {}
+}
+
+// Если всё равно нет - ошибка
+if (!uid) {
+    document.body.innerHTML = '<div style="color:#fff;text-align:center;padding:40px"><h2>❌ Ошибка</h2><p>Не удалось получить ID пользователя</p><p>Откройте панель через кнопку 👤 Профиль в боте</p></div>';
+} else {
+    console.log('User ID: ' + uid);
 }
 
 var rating = 0;
 
 function showToast(msg) { var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(function(){t.classList.remove('show')},2500); }
-async function api(u) { const r = await fetch('/api'+u+'?user_id='+uid); return r.json(); }
+async function api(u) { var r = await fetch('/api'+u+'?user_id='+uid); return r.json(); }
 
 function switchTab(tab) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
   event.target.classList.add('active');
   document.getElementById('tab-scripts').style.display = tab==='scripts'?'block':'none';
   document.getElementById('tab-reviews').style.display = tab==='reviews'?'block':'none';
   if(tab==='reviews'){loadReviews();updateRatingDisplay();}
 }
 
-function setRating(r){rating=r;document.querySelectorAll('#ratingStarsVote .star-btn').forEach((s,i)=>s.classList.toggle('active',i<r));}
+function setRating(r){rating=r;document.querySelectorAll('#ratingStarsVote .star-btn').forEach(function(s,i){s.classList.toggle('active',i<r);});}
 
 async function load(){
 try{
-const d=await api('/scripts');
+var d=await api('/scripts');
 document.getElementById('homeName').textContent=d.user.name||'User';
 document.getElementById('homeEmail').textContent='@'+(d.user.username||'unknown');
 var av=document.getElementById('homeAvatar');av.innerHTML='';
@@ -620,17 +633,17 @@ document.getElementById('daysLeft').textContent=d.days_left;
 document.getElementById('totalRestarts').textContent=d.total_restarts;
 var h='';
 if(!d.scripts.length)h='<div class="empty">📭 Нет скриптов</div>';
-else d.scripts.forEach(s=>{h+='<div class="script-item"><div><span class="status-dot '+s.status+'"></span><span class="script-name">'+s.name+'</span><div class="script-meta">'+s.size+' • '+s.created+'</div></div><div>'+(s.status==='running'?'<button class="btn btn-stop" onclick="act(\'stop\',\''+s.id+'\')">Стоп</button>':'<button class="btn btn-start" onclick="act(\'start\',\''+s.id+'\')">Пуск</button>')+' <button class="btn btn-logs" onclick="logs(\''+s.id+'\')">Логи</button></div></div><div class="log-content" id="log_'+s.id+'"></div>'});
+else d.scripts.forEach(function(s){h+='<div class="script-item"><div><span class="status-dot '+s.status+'"></span><span class="script-name">'+s.name+'</span><div class="script-meta">'+s.size+' • '+s.created+'</div></div><div>'+(s.status==='running'?'<button class="btn btn-stop" onclick="act(\'stop\',\''+s.id+'\')">Стоп</button>':'<button class="btn btn-start" onclick="act(\'start\',\''+s.id+'\')">Пуск</button>')+' <button class="btn btn-logs" onclick="logs(\''+s.id+'\')">Логи</button></div></div><div class="log-content" id="log_'+s.id+'"></div>'});
 document.getElementById('scriptsList').innerHTML=h;
-}catch(e){console.error(e)}
+}catch(e){console.error(e);}
 }
 
 async function act(t,id){await api('/'+t+'&script_id='+id);load();}
 async function logs(id){var d=document.getElementById('log_'+id);if(d.classList.contains('show')){d.classList.remove('show');return}var r=await api('/logs&script_id='+id);d.textContent=r.logs||'Логов нет';d.classList.add('show');}
-async function loadReviews(){var r=await api('/reviews');var c=document.getElementById('reviewsList');if(!r.reviews.length){c.innerHTML='<div class="empty">⭐ Нет отзывов</div>';return}c.innerHTML=r.reviews.map(rv=>'<div class="review-item"><div class="review-avatar">'+(rv.username||'U')[0].toUpperCase()+'</div><div><div class="review-name">@'+(rv.username||'user')+'</div><div class="review-stars-sm">'+'★'.repeat(rv.rating)+'☆'.repeat(5-rv.rating)+'</div><div class="review-text">'+rv.text+'</div></div></div>').join('');}
-async function updateRatingDisplay(){var r=await api('/reviews');if(!r.reviews.length){document.getElementById('ratingBig').textContent='0.0';document.getElementById('ratingStarsRow').innerHTML='<i class="fas fa-star" style="color:#444"></i>'.repeat(5);document.getElementById('ratingCount').textContent='0 отзывов';return}var avg=(r.reviews.reduce((a,rv)=>a+rv.rating,0)/r.reviews.length).toFixed(1);document.getElementById('ratingBig').textContent=avg;var stars=Math.round(parseFloat(avg));var h='';for(var i=0;i<5;i++)h+='<i class="fas fa-star" style="color:'+(i<stars?'#ffcc00':'#444')+';font-size:18px"></i>';document.getElementById('ratingStarsRow').innerHTML=h;document.getElementById('ratingCount').textContent=r.reviews.length+' отзывов';}
-async function submitReview(){if(!rating){showToast('Выберите оценку!');return}var text=document.getElementById('reviewText').value.trim();if(!text){showToast('Напишите отзыв!');return}await api('/add_review&rating='+rating+'&text='+encodeURIComponent(text));rating=0;document.getElementById('reviewText').value='';document.querySelectorAll('#ratingStarsVote .star-btn').forEach(s=>s.classList.remove('active'));loadReviews();updateRatingDisplay();showToast('✅ Отзыв отправлен!');}
-async function loadPurchases(){var r=await api('/all_history');var sc=document.getElementById('livePurchasesScroll');if(!r.purchases.length){sc.innerHTML='<div class="empty">Нет покупок</div>';return}var today=new Date().toDateString();var todayCount=r.purchases.filter(p=>new Date(p.date).toDateString()===today).length;document.getElementById('purchaseCounter').textContent=todayCount+' сегодня';sc.innerHTML=r.purchases.slice(0,10).map(p=>{var d=new Date(p.date);var timeAgo=Math.floor((Date.now()-d)/1000);var timeStr=timeAgo<60?'только что':timeAgo<3600?Math.floor(timeAgo/60)+' мин.':timeAgo<86400?Math.floor(timeAgo/3600)+' ч.':d.toLocaleDateString('ru-RU');return'<div class="purchase-mini"><div class="purchase-mini-avatar">'+(p.username||'U')[0].toUpperCase()+'</div><div><div class="purchase-mini-name">@'+(p.username||'user')+'</div><div class="purchase-mini-detail">'+p.plan+'</div></div><div class="purchase-mini-price">'+p.amount+' '+p.currency+'</div><div class="purchase-mini-time">'+timeStr+'</div></div>'}).join('');}
+async function loadReviews(){var r=await api('/reviews');var c=document.getElementById('reviewsList');if(!r.reviews.length){c.innerHTML='<div class="empty">⭐ Нет отзывов</div>';return}c.innerHTML=r.reviews.map(function(rv){return'<div class="review-item"><div class="review-avatar">'+(rv.username||'U')[0].toUpperCase()+'</div><div><div class="review-name">@'+(rv.username||'user')+'</div><div class="review-stars-sm">'+'★'.repeat(rv.rating)+'☆'.repeat(5-rv.rating)+'</div><div class="review-text">'+rv.text+'</div></div></div>';}).join('');}
+async function updateRatingDisplay(){var r=await api('/reviews');if(!r.reviews.length){document.getElementById('ratingBig').textContent='0.0';document.getElementById('ratingStarsRow').innerHTML='<i class="fas fa-star" style="color:#444"></i>'.repeat(5);document.getElementById('ratingCount').textContent='0 отзывов';return}var avg=(r.reviews.reduce(function(a,rv){return a+rv.rating;},0)/r.reviews.length).toFixed(1);document.getElementById('ratingBig').textContent=avg;var stars=Math.round(parseFloat(avg));var h='';for(var i=0;i<5;i++)h+='<i class="fas fa-star" style="color:'+(i<stars?'#ffcc00':'#444')+';font-size:18px"></i>';document.getElementById('ratingStarsRow').innerHTML=h;document.getElementById('ratingCount').textContent=r.reviews.length+' отзывов';}
+async function submitReview(){if(!rating){showToast('Выберите оценку!');return}var text=document.getElementById('reviewText').value.trim();if(!text){showToast('Напишите отзыв!');return}await api('/add_review&rating='+rating+'&text='+encodeURIComponent(text));rating=0;document.getElementById('reviewText').value='';document.querySelectorAll('#ratingStarsVote .star-btn').forEach(function(s){s.classList.remove('active');});loadReviews();updateRatingDisplay();showToast('✅ Отзыв отправлен!');}
+async function loadPurchases(){var r=await api('/all_history');var sc=document.getElementById('livePurchasesScroll');if(!r.purchases.length){sc.innerHTML='<div class="empty">Нет покупок</div>';return}var today=new Date().toDateString();var todayCount=r.purchases.filter(function(p){return new Date(p.date).toDateString()===today;}).length;document.getElementById('purchaseCounter').textContent=todayCount+' сегодня';sc.innerHTML=r.purchases.slice(0,10).map(function(p){var d=new Date(p.date);var timeAgo=Math.floor((Date.now()-d)/1000);var timeStr=timeAgo<60?'только что':timeAgo<3600?Math.floor(timeAgo/60)+' мин.':timeAgo<86400?Math.floor(timeAgo/3600)+' ч.':d.toLocaleDateString('ru-RU');return'<div class="purchase-mini"><div class="purchase-mini-avatar">'+(p.username||'U')[0].toUpperCase()+'</div><div><div class="purchase-mini-name">@'+(p.username||'user')+'</div><div class="purchase-mini-detail">'+p.plan+'</div></div><div class="purchase-mini-price">'+p.amount+' '+p.currency+'</div><div class="purchase-mini-time">'+timeStr+'</div></div>';}).join('');}
 
 load();loadPurchases();setInterval(load,15000);setInterval(loadPurchases,30000);
 </script></body></html>"""
