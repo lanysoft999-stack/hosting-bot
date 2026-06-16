@@ -25,10 +25,11 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "30.0 FINAL"
+VERSION = "31.0 RENDER FIX"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
+PORT = int(os.getenv("PORT", "10000"))
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS_DIR = os.path.join(BASE_DIR, "scripts")
@@ -40,7 +41,7 @@ DATABASE_PATH = os.path.join(BASE_DIR, "hosting.db")
 FREE_MAX_SCRIPTS = 10
 FREE_MAX_SIZE_MB = 10
 PREMIUM_MAX_SIZE_MB = 1024
-TRIAL_DAYS = 3  # Было 7, стало 3
+TRIAL_DAYS = 3
 
 PLANS = {
     '7d': {'name': '7 дней', 'days': 7, 'usdt': 1.99, 'ton': 3.0},
@@ -269,7 +270,6 @@ def cmd_start(message):
     args = message.text.split()
     ref = None
     
-    # Проверяем реферальную ссылку
     if len(args) > 1 and args[1].startswith('ref'):
         try: ref = int(args[1][3:])
         except: pass
@@ -277,16 +277,14 @@ def cmd_start(message):
     fn = message.from_user.first_name or ''
     un = message.from_user.username or ''
     
-    # Создаём пользователя если новый
     if not get_user(user_id):
         create_user(user_id, un, fn, ref)
         
-        # Начисляем бонус рефереру
         if ref and ref != user_id:
             ref_user = get_user(ref)
             if ref_user:
-                ref_count = get_referral_count(ref) + 1  # +1 потому что новый ещё не посчитан
-                bonus_minutes = (ref_count // 2) * 5  # 5 минут за каждых 2
+                ref_count = get_referral_count(ref) + 1
+                bonus_minutes = (ref_count // 2) * 5
                 
                 if bonus_minutes > 0:
                     if ref_user['subscription'] == 'premium':
@@ -714,13 +712,30 @@ def monitor():
         except: pass
         time.sleep(10)
 
+# ========== HEALTH CHECK ДЛЯ RENDER ==========
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class HealthCheck(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'OK')
+    def log_message(self, format, *args):
+        pass
+
+def run_health():
+    print(f"💚 Health: http://0.0.0.0:{PORT}")
+    HTTPServer(('0.0.0.0', PORT), HealthCheck).serve_forever()
+
 if __name__ == '__main__':
     print(f"🚀 HOSTING v{VERSION}")
     print(f"⏱️ Trial: {TRIAL_DAYS} дня")
-    print("👥 Рефералы: +5 мин за 2 чел")
-    print("🎨 Медиа: ВКЛ")
-    print("🔙 Назад: ВКЛ")
+    print(f"👥 Рефералы: +5 мин за 2 чел")
+    print(f"💚 Порт: {PORT}")
+    
     threading.Thread(target=monitor, daemon=True).start()
+    threading.Thread(target=run_health, daemon=True).start()
     
     while True:
         try:
