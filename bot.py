@@ -11,6 +11,7 @@ import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
+# Автоустановка библиотек
 try:
     import telebot
     from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
@@ -25,7 +26,7 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "31.0 RENDER FIX"
+VERSION = "33.0 NO-DOCKER"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
@@ -79,6 +80,18 @@ def init_db():
     conn.commit()
 
 init_db()
+
+# ========== БЕЗОПАСНОЕ РЕДАКТИРОВАНИЕ ==========
+def safe_edit(chat_id, message_id, text, markup=None):
+    try:
+        bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode='Markdown')
+        return True
+    except:
+        try:
+            bot.send_message(chat_id, text, reply_markup=markup, parse_mode='Markdown')
+        except:
+            pass
+        return False
 
 # ========== МЕДИА ==========
 def save_media(section, file_id, file_type, caption=''):
@@ -263,7 +276,7 @@ def get_main_menu(user_id=None):
         markup.add(KeyboardButton("🎨 Оформление"))
     return markup
 
-# ========== СТАРТ С РЕФЕРАЛЬНОЙ СИСТЕМОЙ ==========
+# ========== СТАРТ ==========
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
     user_id = message.from_user.id
@@ -323,7 +336,6 @@ def cmd_start(message):
 
 # ========== ПРОФИЛЬ ==========
 @bot.message_handler(func=lambda m: m.text == "👤 Профиль")
-@bot.message_handler(commands=['profile'])
 def menu_profile(message):
     user_id = message.from_user.id
     days = get_days_left(user_id)
@@ -342,7 +354,6 @@ def menu_profile(message):
 
 # ========== СКРИПТЫ ==========
 @bot.message_handler(func=lambda m: m.text == "📱 Мои скрипты")
-@bot.message_handler(commands=['scripts'])
 def menu_scripts(message):
     user_id = message.chat.id
     scripts = get_user_scripts(user_id)
@@ -374,7 +385,6 @@ def menu_upload(message):
 
 # ========== ПРЕМИУМ ==========
 @bot.message_handler(func=lambda m: m.text == "💎 Премиум")
-@bot.message_handler(commands=['premium', 'buy'])
 def menu_premium(message):
     user_id = message.from_user.id
     if is_premium(user_id):
@@ -396,7 +406,6 @@ def menu_premium(message):
 
 # ========== РЕФЕРАЛЫ ==========
 @bot.message_handler(func=lambda m: m.text == "👥 Рефералы")
-@bot.message_handler(commands=['ref'])
 def menu_ref(message):
     uid = message.from_user.id
     cnt = get_referral_count(uid)
@@ -440,7 +449,7 @@ def media_section(call):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("🗑 Удалить медиа", callback_data=f"delmedia_{section}"))
     markup.add(InlineKeyboardButton("🔙 Назад", callback_data="adm_media"))
-    bot.edit_message_text(f"🎨 **{names.get(section, section)}**\n\nОтправьте фото, видео или GIF.", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+    safe_edit(call.message.chat.id, call.message.message_id, f"🎨 **{names.get(section, section)}**\n\nОтправьте фото, видео или GIF.", markup)
     bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('delmedia_'))
@@ -449,27 +458,21 @@ def delete_media(call):
     section = call.data[9:]
     cursor.execute("DELETE FROM media WHERE section = ?", (section,))
     conn.commit()
-    bot.edit_message_text(f"✅ Медиа удалено для **{section}**", call.message.chat.id, call.message.message_id, parse_mode='Markdown')
+    safe_edit(call.message.chat.id, call.message.message_id, f"✅ Медиа удалено для **{section}**")
     bot.answer_callback_query(call.id, "✅")
 
 @bot.message_handler(content_types=['photo', 'video', 'animation'])
 def handle_admin_media(message):
-    if message.from_user.id != ADMIN_ID or message.from_user.id not in admin_media_state:
-        return
-    
+    if message.from_user.id != ADMIN_ID or message.from_user.id not in admin_media_state: return
     section = admin_media_state.pop(message.from_user.id)
     
     if message.content_type == 'photo':
-        file_id = message.photo[-1].file_id
-        file_type = 'photo'
+        file_id, file_type = message.photo[-1].file_id, 'photo'
     elif message.content_type == 'video':
-        file_id = message.video.file_id
-        file_type = 'video'
+        file_id, file_type = message.video.file_id, 'video'
     elif message.content_type == 'animation':
-        file_id = message.animation.file_id
-        file_type = 'animation'
-    else:
-        return
+        file_id, file_type = message.animation.file_id, 'animation'
+    else: return
     
     save_media(section, file_id, file_type, message.caption or '')
     bot.reply_to(message, f"✅ Медиа сохранено для **{section}**!")
@@ -493,7 +496,7 @@ def choose_plan(call):
     for k, p in PLANS.items():
         markup.add(InlineKeyboardButton(f"{p['name']} — {p[cur]} {cur.upper()}", callback_data=f"buy_{k}_{cur}"))
     markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_prem"))
-    bot.edit_message_text(f"📅 **Срок ({cur.upper()}):**", call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+    safe_edit(call.message.chat.id, call.message.message_id, f"📅 **Срок ({cur.upper()}):**", markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('buy_'))
 def create_invoice(call):
@@ -520,9 +523,11 @@ def check_payment(call):
         cursor.execute("UPDATE crypto_payments SET status = 'paid' WHERE payment_id = ?", (pid,))
         conn.commit()
         activate_premium(call.from_user.id, int(days))
-        bot.edit_message_text(f"✅ **Оплачено! Премиум на {days} дн!** 🎉", call.message.chat.id, call.message.message_id, parse_mode='Markdown')
-    elif r and r.get("status") == "active": bot.answer_callback_query(call.id, "⏳ Ожидание...")
-    else: bot.answer_callback_query(call.id, "❌ Не оплачено")
+        safe_edit(call.message.chat.id, call.message.message_id, f"✅ **Оплачено! Премиум на {days} дн!** 🎉")
+    elif r and r.get("status") == "active":
+        bot.answer_callback_query(call.id, "⏳ Ожидание...")
+    else:
+        bot.answer_callback_query(call.id, "❌ Не оплачено")
 
 @bot.callback_query_handler(func=lambda call: call.data == "promo")
 def enter_promo(call):
@@ -712,7 +717,7 @@ def monitor():
         except: pass
         time.sleep(10)
 
-# ========== HEALTH CHECK ДЛЯ RENDER ==========
+# ========== HEALTH CHECK ==========
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 class HealthCheck(BaseHTTPRequestHandler):
@@ -721,15 +726,14 @@ class HealthCheck(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
         self.wfile.write(b'OK')
-    def log_message(self, format, *args):
-        pass
+    def log_message(self, format, *args): pass
 
 def run_health():
     print(f"💚 Health: http://0.0.0.0:{PORT}")
     HTTPServer(('0.0.0.0', PORT), HealthCheck).serve_forever()
 
 if __name__ == '__main__':
-    print(f"🚀 HOSTING v{VERSION}")
+    print(f"🚀 HOSTING v{VERSION} | Python 3")
     print(f"⏱️ Trial: {TRIAL_DAYS} дня")
     print(f"👥 Рефералы: +5 мин за 2 чел")
     print(f"💚 Порт: {PORT}")
