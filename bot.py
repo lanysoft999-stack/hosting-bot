@@ -28,10 +28,11 @@ except ImportError:
     import requests
 
 # ========== КОНФИГУРАЦИЯ ==========
-VERSION = "17.0 MENU WEBAPP"
+VERSION = "18.0 PERFECT"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
+PORT = int(os.getenv("PORT", "10000"))
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS_DIR = os.path.join(BASE_DIR, "scripts")
@@ -46,12 +47,10 @@ MONITOR_INTERVAL = 10
 TRIAL_DAYS = 7
 
 PLANS = {
-    '7d': {'name': '7 дней / 7 days', 'days': 7, 'usdt': 1.99, 'ton': 3.0, 'btc': 0.00003},
-    '30d': {'name': '30 дней / 30 days', 'days': 30, 'usdt': 4.99, 'ton': 8.0, 'btc': 0.00008},
-    '60d': {'name': '60 дней / 60 days', 'days': 60, 'usdt': 7.99, 'ton': 12.0, 'btc': 0.00012},
+    '7d': {'name': '7 дней', 'days': 7, 'usdt': 1.99, 'ton': 3.0},
+    '30d': {'name': '30 дней', 'days': 30, 'usdt': 4.99, 'ton': 8.0},
+    '60d': {'name': '60 дней', 'days': 60, 'usdt': 7.99, 'ton': 12.0},
 }
-
-CURRENCY_NAMES = {'usdt': '💵 USDT (TRC20)', 'ton': '💎 TON', 'btc': '₿ BTC'}
 
 for d in [SCRIPTS_DIR, LOGS_DIR, TEMP_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -108,134 +107,6 @@ def init_db():
 
 init_db()
 
-# ========== ПЕРЕВОД ==========
-T = {
-    'ru': {
-        'welcome': '🚀 **Python Hosting Bot v{}**\n\n👤 Статус: {}\n📦 Загрузка .py / ZIP\n🔄 Автоперезапуск\n💰 Оплата криптой\n👥 Рефералы\n☰ Меню — веб-панель',
-        'scripts': '📱 Мои скрипты', 'upload': '📤 Загрузить', 'premium': '💎 Премиум',
-        'status': 'ℹ️ Статус', 'admin': '👑 Админ', 'all_scripts': '🔍 Все скрипты',
-        'referral': '👥 Рефералы', 'language': '🌐 Язык', 'web': '🌐 Веб-панель',
-        'web_text': '🌐 **Нажмите ☰ Меню для открытия панели управления**',
-        'no_scripts': '📭 Нет скриптов. Отправьте .py файл!',
-        'script_list': '📋 **Скрипты:**',
-        'premium_active': '💎 **Премиум активен**\n📅 Осталось: {} дн',
-        'choose_currency': '💰 **Шаг 1: Выберите валюту:**',
-        'choose_plan': '📅 **Шаг 2: Выберите срок ({}):**\n\n',
-        'back': '🔙 Назад',
-        'invoice_created': '💰 **Счёт создан!**\n\n📅 {}\n💎 **{} {}**\n🆔 `{}`\n\nНажмите кнопку 👇',
-        'invoice_error': '❌ Ошибка создания счёта',
-        'check_payment': '🔄 Проверить оплату',
-        'pay_button': '💳 Оплатить',
-        'payment_ok': '✅ **Оплачено!** Премиум на {} дней! 🎉',
-        'payment_wait': '⏳ Ожидает оплаты...',
-        'payment_no': '❌ Не оплачено',
-        'enter_promo': '🔑 Отправьте промокод:',
-        'promo_not_found': '❌ Промокод не найден',
-        'promo_used': '❌ Промокод использован',
-        'promo_ok': '✅ Премиум на 30 дней!',
-        'status_premium': '💎 **Премиум: {} дн**',
-        'status_trial': '🆓 **Пробный: {} дн**',
-        'status_free': '🆓 **Бесплатный**',
-        'referral_info': '👥 **Рефералы**\n\n🔗 Ссылка:\n`https://t.me/{}?start=ref{}`\n\n👤 Рефералов: {}\n🎁 Бонус: {} дн',
-        'copy_ref': '🔗 Копировать ссылку',
-        'ref_copied': '✅ Ссылка отправлена!',
-        'lang_select': '🌐 Выберите язык:',
-        'lang_changed_ru': '🇷🇺 Русский',
-        'lang_changed_en': '🇬🇧 English',
-        'help': '🆘 /start /list /promo /referral /lang',
-        'script_started': '✅ **Запущен!**\n📄 {}\n🆔 `{}`',
-        'logs_empty': '📜 Логи пустые',
-        'logs_not_found': '📜 Логов нет',
-        'limit_error': '❌ Лимит! Нужен 💎 Премиум!',
-        'max_size_error': '❌ Максимум {} МБ!',
-        'uploading': '⏳ Загружаю...',
-        'uploaded': '✅ {} загружен!',
-        'select_main': '📁 Главный файл:',
-        'deleted': '🗑 Удалён',
-        'stopped': 'Уже остановлен',
-        'stopped_ok': '✅ Остановлен',
-        'started_ok': '✅ Запущен!',
-        'file_not_found': '❌ Файл не найден',
-        'no_access': '❌ Нет доступа',
-        'not_found': '❌ Не найден',
-        'session_expired': '❌ Сессия устарела',
-        'admin_panel': '👑 **Админ**\n📁 Скриптов: {}\n🟢 Запущено: {}',
-        'give_premium': '💎 Выдать премиум',
-        'give_premium_prompt': '📝 ID и дни:\n`123456 30`',
-        'give_premium_ok': '✅ Премиум на {} дн для {}',
-        'give_premium_error': '❌ Неверный формат',
-        'notification_bot_down': '🔴 **Бот упал!**\n📄 {}\n🔄 Перезапуск...',
-        'notification_restarted': '✅ **Бот перезапущен!**\n📄 {}',
-        'notification_subscription': '⚠️ **Подписка заканчивается!**\n📅 Осталось: {} дн',
-        'notification_trial_extended': '🎁 **Триал продлён на 3 дня!**',
-    },
-    'en': {
-        'welcome': '🚀 **Python Hosting Bot v{}**\n\n👤 Status: {}\n📦 Upload .py / ZIP\n🔄 Auto-restart\n💰 Crypto\n👥 Referrals\n☰ Menu — Web Panel',
-        'scripts': '📱 My Scripts', 'upload': '📤 Upload', 'premium': '💎 Premium',
-        'status': 'ℹ️ Status', 'admin': '👑 Admin', 'all_scripts': '🔍 All Scripts',
-        'referral': '👥 Referrals', 'language': '🌐 Language', 'web': '🌐 Web Panel',
-        'web_text': '🌐 **Press ☰ Menu to open control panel**',
-        'no_scripts': '📭 No scripts. Send .py file!',
-        'script_list': '📋 **Scripts:**',
-        'premium_active': '💎 **Premium Active**\n📅 Left: {} days',
-        'choose_currency': '💰 **Step 1: Choose currency:**',
-        'choose_plan': '📅 **Step 2: Choose period ({}):**\n\n',
-        'back': '🔙 Back',
-        'invoice_created': '💰 **Invoice!**\n\n📅 {}\n💎 **{} {}**\n🆔 `{}`\n\nPress button 👇',
-        'invoice_error': '❌ Error creating invoice',
-        'check_payment': '🔄 Check',
-        'pay_button': '💳 Pay',
-        'payment_ok': '✅ **Paid!** Premium for {} days! 🎉',
-        'payment_wait': '⏳ Waiting...',
-        'payment_no': '❌ Not paid',
-        'enter_promo': '🔑 Enter promo:',
-        'promo_not_found': '❌ Not found',
-        'promo_used': '❌ Used',
-        'promo_ok': '✅ Premium 30 days!',
-        'status_premium': '💎 **Premium: {}d**',
-        'status_trial': '🆓 **Trial: {}d**',
-        'status_free': '🆓 **Free**',
-        'referral_info': '👥 **Referrals**\n\n🔗 Link:\n`https://t.me/{}?start=ref{}`\n\n👤 Referrals: {}\n🎁 Bonus: {}d',
-        'copy_ref': '🔗 Copy link',
-        'ref_copied': '✅ Link sent!',
-        'lang_select': '🌐 Choose language:',
-        'lang_changed_ru': '🇷🇺 Russian',
-        'lang_changed_en': '🇬🇧 English',
-        'help': '🆘 /start /list /promo /referral /lang',
-        'script_started': '✅ **Started!**\n📄 {}\n🆔 `{}`',
-        'logs_empty': '📜 Logs empty',
-        'logs_not_found': '📜 No logs',
-        'limit_error': '❌ Limit! Need 💎 Premium!',
-        'max_size_error': '❌ Max {} MB!',
-        'uploading': '⏳ Uploading...',
-        'uploaded': '✅ {} uploaded!',
-        'select_main': '📁 Main file:',
-        'deleted': '🗑 Deleted',
-        'stopped': 'Already stopped',
-        'stopped_ok': '✅ Stopped',
-        'started_ok': '✅ Started!',
-        'file_not_found': '❌ File not found',
-        'no_access': '❌ No access',
-        'not_found': '❌ Not found',
-        'session_expired': '❌ Session expired',
-        'admin_panel': '👑 **Admin**\n📁 Scripts: {}\n🟢 Running: {}',
-        'give_premium': '💎 Give premium',
-        'give_premium_prompt': '📝 ID and days:\n`123456 30`',
-        'give_premium_ok': '✅ Premium {}d for {}',
-        'give_premium_error': '❌ Invalid format',
-        'notification_bot_down': '🔴 **Bot crashed!**\n📄 {}\n🔄 Restarting...',
-        'notification_restarted': '✅ **Bot restarted!**\n📄 {}',
-        'notification_subscription': '⚠️ **Subscription expiring!**\n📅 Left: {}d',
-        'notification_trial_extended': '🎁 **Trial +3 days!**',
-    }
-}
-
-def t(user_id, key, *args):
-    user = get_user(user_id)
-    lang = user['language'] if user and user.get('language') else 'ru'
-    text = T.get(lang, T['ru']).get(key, T['ru'].get(key, key))
-    return text.format(*args) if args else text
-
 # ========== ФУНКЦИИ БД ==========
 def get_user(user_id):
     cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
@@ -257,7 +128,6 @@ def create_user(user_id, username, first_name='', referrer_id=None):
                          VALUES (?,?,?,?,?,?,?,?)''',
                       (user_id, username, first_name, avatar_url, 'trial', trial_end, trial_start, referrer_id))
         conn.commit()
-        
         if referrer_id and referrer_id != user_id:
             referrer = get_user(referrer_id)
             if referrer:
@@ -326,10 +196,6 @@ def add_script(script_id, user_id, name, path, size, main_file=None, tags=''):
 def update_script_status(script_id, status, pid=None):
     if pid: cursor.execute('UPDATE scripts SET status = ?, pid = ? WHERE id = ?', (status, pid, script_id))
     else: cursor.execute('UPDATE scripts SET status = ? WHERE id = ?', (status, script_id))
-    conn.commit()
-
-def update_script_tags(script_id, tags):
-    cursor.execute('UPDATE scripts SET tags = ? WHERE id = ?', (tags, script_id))
     conn.commit()
 
 def count_user_scripts(user_id):
@@ -425,19 +291,15 @@ bot = telebot.TeleBot(TOKEN)
 upload_states = {}
 
 def get_host():
-    return os.getenv("RENDER_EXTERNAL_HOSTNAME", "localhost:10000")
+    return os.getenv("RENDER_EXTERNAL_HOSTNAME", f"localhost:{PORT}")
 
 def get_main_menu(user_id=None):
-    user = get_user(user_id) if user_id else None
-    lang = user['language'] if user else 'ru'
-    
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(KeyboardButton(T[lang]['scripts']), KeyboardButton(T[lang]['upload']))
-    markup.add(KeyboardButton(T[lang]['premium']), KeyboardButton(T[lang]['status']))
-    markup.add(KeyboardButton(T[lang]['referral']), KeyboardButton(T[lang]['language']))
-    
+    markup.add(KeyboardButton("📱 Мои скрипты"), KeyboardButton("📤 Загрузить"))
+    markup.add(KeyboardButton("💎 Премиум"), KeyboardButton("ℹ️ Статус"))
+    markup.add(KeyboardButton("👥 Рефералы"), KeyboardButton("🌐 Язык"))
     if user_id == ADMIN_ID:
-        markup.add(KeyboardButton(T[lang]['admin']), KeyboardButton(T[lang]['all_scripts']))
+        markup.add(KeyboardButton("👑 Админ"), KeyboardButton("🔍 Все скрипты"))
     return markup
 
 @bot.message_handler(commands=['start'])
@@ -464,7 +326,7 @@ def cmd_start(message):
     elif days > 0: status = f"🆓 Trial: {days}d"
     else: status = "🆓 Free"
     
-    # Устанавливаем Menu Button для пользователя
+    # Устанавливаем Menu Button
     host = get_host()
     try:
         bot.set_chat_menu_button(
@@ -475,104 +337,95 @@ def cmd_start(message):
         ))
     except: pass
     
-    bot.send_message(user_id, t(user_id, 'welcome', VERSION, status), reply_markup=get_main_menu(user_id), parse_mode='Markdown')
-    bot.send_message(user_id, t(user_id, 'web_text'), parse_mode='Markdown')
-
-@bot.message_handler(commands=['help'])
-def cmd_help(message):
-    bot.send_message(message.chat.id, t(message.from_user.id, 'help'), parse_mode='Markdown')
+    bot.send_message(user_id, f"🚀 **Python Hosting Bot v{VERSION}**\n\n👤 {status}\n☰ Нажми кнопку меню для веб-панели", reply_markup=get_main_menu(user_id), parse_mode='Markdown')
 
 # ========== МЕНЮ ==========
-@bot.message_handler(func=lambda m: m.text in [T['ru']['scripts'], T['en']['scripts']])
+@bot.message_handler(func=lambda m: m.text == "📱 Мои скрипты")
 def menu_scripts(message):
     scripts = get_user_scripts(message.from_user.id)
     if not scripts:
-        bot.reply_to(message, t(message.from_user.id, 'no_scripts'))
+        bot.reply_to(message, "📭 Нет скриптов. Отправьте .py файл!")
         return
     markup = InlineKeyboardMarkup(row_width=2)
     for s in scripts[:20]:
         emoji = "🟢" if s['status'] == 'running' else "🔴"
-        tag = f" [{s['tags']}]" if s.get('tags') else ""
-        markup.add(InlineKeyboardButton(f"{emoji} {s['name'][:20]}{tag}", callback_data=f"info_{s['id']}"), InlineKeyboardButton("🗑", callback_data=f"delete_{s['id']}"))
-    bot.send_message(message.chat.id, t(message.from_user.id, 'script_list'), reply_markup=markup, parse_mode='Markdown')
+        markup.add(InlineKeyboardButton(f"{emoji} {s['name'][:20]}", callback_data=f"info_{s['id']}"), InlineKeyboardButton("🗑", callback_data=f"delete_{s['id']}"))
+    bot.send_message(message.chat.id, "📋 **Скрипты:**", reply_markup=markup, parse_mode='Markdown')
 
-@bot.message_handler(func=lambda m: m.text in [T['ru']['upload'], T['en']['upload']])
+@bot.message_handler(func=lambda m: m.text == "📤 Загрузить")
 def menu_upload(message):
-    bot.reply_to(message, "📤 Отправьте .py файл или ZIP архив!")
+    bot.reply_to(message, "📤 Отправьте .py файл или ZIP!")
 
-@bot.message_handler(func=lambda m: m.text in [T['ru']['premium'], T['en']['premium']])
+@bot.message_handler(func=lambda m: m.text == "💎 Премиум")
 def menu_premium(message):
     user_id = message.from_user.id
     if is_premium(user_id):
         days = get_days_left(user_id)
-        bot.send_message(user_id, t(user_id, 'premium_active', days), parse_mode='Markdown')
+        bot.send_message(user_id, f"💎 **Премиум: {days} дн**", parse_mode='Markdown')
         return
-    text = t(user_id, 'choose_currency')
+    text = "💰 **Выберите валюту:**"
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(InlineKeyboardButton("💵 USDT", callback_data="method_usdt"), InlineKeyboardButton("💎 TON", callback_data="method_ton"))
-    markup.add(InlineKeyboardButton("₿ BTC", callback_data="method_btc"), InlineKeyboardButton("🔑 Промокод", callback_data="enter_promo"))
+    markup.add(InlineKeyboardButton("🔑 Промокод", callback_data="enter_promo"))
     bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
 
-@bot.message_handler(func=lambda m: m.text in [T['ru']['status'], T['en']['status']])
+@bot.message_handler(func=lambda m: m.text == "ℹ️ Статус")
 def menu_status(message):
     user_id = message.from_user.id
     days = get_days_left(user_id)
     scripts = count_user_scripts(user_id)
-    ref_count = get_referral_count(user_id)
-    ref_bonus = get_referral_bonus(user_id)
-    if is_premium(user_id): text = t(user_id, 'status_premium', days)
-    elif days > 0: text = t(user_id, 'status_trial', days)
-    else: text = t(user_id, 'status_free')
-    text += f"\n📁 Скриптов: {scripts}/{FREE_MAX_SCRIPTS}\n👥 Рефералов: {ref_count} | Бонус: {ref_bonus} дн"
+    if is_premium(user_id): text = f"💎 **Премиум: {days} дн**"
+    elif days > 0: text = f"🆓 **Пробный: {days} дн**"
+    else: text = "🆓 **Бесплатный**"
+    text += f"\n📁 Скриптов: {scripts}/{FREE_MAX_SCRIPTS}"
     bot.send_message(user_id, text, parse_mode='Markdown')
 
-@bot.message_handler(func=lambda m: m.text in [T['ru']['referral'], T['en']['referral']])
+@bot.message_handler(func=lambda m: m.text == "👥 Рефералы")
 def menu_referral(message):
     user_id = message.from_user.id
     ref_count = get_referral_count(user_id)
     ref_bonus = get_referral_bonus(user_id)
     bot_username = bot.get_me().username
-    text = t(user_id, 'referral_info', bot_username, user_id, ref_count, ref_bonus)
+    text = f"👥 **Рефералы**\n\n🔗 `https://t.me/{bot_username}?start=ref{user_id}`\n\n👤 Рефералов: {ref_count}\n🎁 Бонус: {ref_bonus} дн"
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(t(user_id, 'copy_ref'), callback_data="copy_ref"))
+    markup.add(InlineKeyboardButton("🔗 Копировать", callback_data="copy_ref"))
     bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
 
 @bot.callback_query_handler(func=lambda call: call.data == "copy_ref")
 def copy_referral(call):
     bot_username = bot.get_me().username
-    ref_link = f"https://t.me/{bot_username}?start=ref{call.from_user.id}"
-    bot.send_message(call.from_user.id, f"🔗 `{ref_link}`", parse_mode='Markdown')
-    bot.answer_callback_query(call.id, t(call.from_user.id, 'ref_copied'))
+    bot.send_message(call.from_user.id, f"🔗 `https://t.me/{bot_username}?start=ref{call.from_user.id}`", parse_mode='Markdown')
+    bot.answer_callback_query(call.id, "✅")
 
-@bot.message_handler(func=lambda m: m.text in [T['ru']['language'], T['en']['language']])
+@bot.message_handler(func=lambda m: m.text == "🌐 Язык")
 def menu_language(message):
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"), InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"))
-    bot.send_message(message.chat.id, t(message.from_user.id, 'lang_select'), reply_markup=markup)
+    bot.send_message(message.chat.id, "🌐 Выберите язык:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('lang_'))
 def change_language(call):
     lang = call.data[5:]
     cursor.execute("UPDATE users SET language = ? WHERE user_id = ?", (lang, call.from_user.id))
     conn.commit()
-    bot.send_message(call.message.chat.id, t(call.from_user.id, f'lang_changed_{lang}'), reply_markup=get_main_menu(call.from_user.id))
+    bot.send_message(call.message.chat.id, "✅ Язык изменён!" if lang == 'ru' else "✅ Language changed!", reply_markup=get_main_menu(call.from_user.id))
     bot.answer_callback_query(call.id, "✅")
 
-@bot.message_handler(func=lambda m: m.text in [T['ru']['admin'], T['en']['admin']] and m.from_user.id == ADMIN_ID)
+@bot.message_handler(func=lambda m: m.text == "👑 Админ" and m.from_user.id == ADMIN_ID)
 def menu_admin(message):
     scripts = get_all_scripts()
     running = [s for s in scripts if s['status'] == 'running']
-    text = t(ADMIN_ID, 'admin_panel', len(scripts), len(running))
+    text = f"👑 **Админ**\n📁 Скриптов: {len(scripts)}\n🟢 Запущено: {len(running)}"
     markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(InlineKeyboardButton(t(ADMIN_ID, 'all_scripts'), callback_data="admin_scripts"))
-    markup.add(InlineKeyboardButton(t(ADMIN_ID, 'give_premium'), callback_data="admin_premium"))
+    markup.add(InlineKeyboardButton("🔍 Все скрипты", callback_data="admin_scripts"))
+    markup.add(InlineKeyboardButton("💎 Выдать премиум", callback_data="admin_premium"))
     bot.send_message(ADMIN_ID, text, reply_markup=markup, parse_mode='Markdown')
 
-@bot.message_handler(func=lambda m: m.text in [T['ru']['all_scripts'], T['en']['all_scripts']] and m.from_user.id == ADMIN_ID)
+@bot.message_handler(func=lambda m: m.text == "🔍 Все скрипты" and m.from_user.id == ADMIN_ID)
 def menu_all_scripts(message):
     scripts = get_all_scripts()
     if not scripts:
-        bot.reply_to(message, t(ADMIN_ID, 'no_scripts'))
+        bot.reply_to(message, "📭 Нет скриптов")
         return
     markup = InlineKeyboardMarkup(row_width=1)
     for s in scripts[:30]:
@@ -587,13 +440,13 @@ def menu_all_scripts(message):
 def choose_plan(call):
     currency = call.data.replace('method_', '')
     bot.answer_callback_query(call.id)
-    currency_name = CURRENCY_NAMES.get(currency, currency.upper())
-    text = t(call.from_user.id, 'choose_plan', currency_name)
+    text = f"📅 **Выберите срок ({currency.upper()}):**\n\n"
     markup = InlineKeyboardMarkup(row_width=1)
     for key, plan in PLANS.items():
         price = plan[currency]
-        markup.add(InlineKeyboardButton(f"📅 {plan['name']} — {price} {currency.upper()}", callback_data=f"buy_{key}_{currency}"))
-    markup.add(InlineKeyboardButton(t(call.from_user.id, 'back'), callback_data="back_to_methods"))
+        text += f"• {plan['name']}: {price} {currency.upper()}\n"
+        markup.add(InlineKeyboardButton(f"{plan['name']} — {price} {currency.upper()}", callback_data=f"buy_{key}_{currency}"))
+    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_to_methods"))
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode='Markdown')
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('buy_'))
@@ -610,12 +463,12 @@ def create_invoice(call):
         pay_url = invoice.get("bot_invoice_url", "")
         invoice_id = invoice.get("invoice_id", "")
         markup = InlineKeyboardMarkup()
-        if pay_url: markup.add(InlineKeyboardButton(t(call.from_user.id, 'pay_button'), url=pay_url))
-        markup.add(InlineKeyboardButton(t(call.from_user.id, 'check_payment'), callback_data=f"check_{invoice_id}_{days}"))
-        text = t(call.from_user.id, 'invoice_created', plan_name, amount, parts[2].upper(), invoice_id)
+        if pay_url: markup.add(InlineKeyboardButton("💳 Оплатить", url=pay_url))
+        markup.add(InlineKeyboardButton("🔄 Проверить", callback_data=f"check_{invoice_id}_{days}"))
+        text = f"💰 **Счёт:** {amount} {parts[2].upper()}\n📅 {plan_name}\n🆔 `{invoice_id}`"
         bot.send_message(call.message.chat.id, text, reply_markup=markup, parse_mode='Markdown')
     else:
-        bot.send_message(call.message.chat.id, t(call.from_user.id, 'invoice_error'))
+        bot.send_message(call.message.chat.id, "❌ Ошибка создания счёта")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('check_'))
 def check_payment(call):
@@ -626,12 +479,12 @@ def check_payment(call):
         cursor.execute("UPDATE crypto_payments SET status = 'paid' WHERE payment_id = ?", (parts[1],))
         conn.commit()
         activate_premium(call.from_user.id, days)
-        bot.edit_message_text(t(call.from_user.id, 'payment_ok', days), call.message.chat.id, call.message.message_id, parse_mode='Markdown')
+        bot.edit_message_text(f"✅ **Оплачено! Премиум на {days} дн!** 🎉", call.message.chat.id, call.message.message_id, parse_mode='Markdown')
         bot.answer_callback_query(call.id, "✅")
     elif result and result.get("status") == "active":
-        bot.answer_callback_query(call.id, t(call.from_user.id, 'payment_wait'))
+        bot.answer_callback_query(call.id, "⏳ Ожидание...")
     else:
-        bot.answer_callback_query(call.id, t(call.from_user.id, 'payment_no'))
+        bot.answer_callback_query(call.id, "❌ Не оплачено")
 
 @bot.callback_query_handler(func=lambda call: call.data == "back_to_methods")
 def back_to_methods(call):
@@ -640,7 +493,7 @@ def back_to_methods(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == "enter_promo")
 def enter_promo(call):
-    msg = bot.send_message(call.message.chat.id, t(call.from_user.id, 'enter_promo'))
+    msg = bot.send_message(call.message.chat.id, "🔑 Отправьте промокод:")
     bot.register_next_step_handler(msg, process_promo)
     bot.answer_callback_query(call.id)
 
@@ -648,21 +501,18 @@ def process_promo(message):
     code = message.text.strip()
     cursor.execute('SELECT * FROM promocodes WHERE code = ?', (code,))
     promo = cursor.fetchone()
-    if not promo: bot.reply_to(message, t(message.from_user.id, 'promo_not_found'))
-    elif promo['used_count'] >= promo['max_uses']: bot.reply_to(message, t(message.from_user.id, 'promo_used'))
+    if not promo: bot.reply_to(message, "❌ Промокод не найден")
+    elif promo['used_count'] >= promo['max_uses']: bot.reply_to(message, "❌ Использован")
     else:
         activate_premium(message.from_user.id, 30)
         cursor.execute('UPDATE promocodes SET used_count = used_count + 1 WHERE code = ?', (code,))
         conn.commit()
-        bot.reply_to(message, t(message.from_user.id, 'promo_ok'))
+        bot.reply_to(message, "✅ Премиум на 30 дней!")
 
 # ========== СКРИПТЫ ==========
 def show_script_info(chat_id, script, is_admin=False):
-    user_id = chat_id
     emoji = "🟢" if script['status'] == 'running' else "🔴"
     info = f"{emoji} **{script['name']}**\n\n🆔 `{script['id']}`\n📁 {format_size(script['size'])}\n📊 {script['status']}\n🔄 Перезапусков: {script['total_restarts']}"
-    if script.get('main_file'): info += f"\n📄 {script['main_file']}"
-    if script.get('tags'): info += f"\n🏷️ {script['tags']}"
     if is_admin:
         owner = get_user(script['user_id'])
         info += f"\n👤 @{owner['username']}" if owner and owner['username'] else f"\n👤 ID:{script['user_id']}"
@@ -670,7 +520,6 @@ def show_script_info(chat_id, script, is_admin=False):
     if script['status'] == 'running': markup.add(InlineKeyboardButton("🛑 Стоп", callback_data=f"stop_{script['id']}"))
     else: markup.add(InlineKeyboardButton("🚀 Запустить", callback_data=f"start_{script['id']}"))
     markup.add(InlineKeyboardButton("📜 Логи", callback_data=f"log_{script['id']}"), InlineKeyboardButton("🗑 Удалить", callback_data=f"delete_{script['id']}"))
-    markup.add(InlineKeyboardButton("🏷️ Теги", callback_data=f"tag_{script['id']}"))
     if is_admin: markup.add(InlineKeyboardButton("🔙 К списку", callback_data="admin_scripts"))
     bot.send_message(chat_id, info, reply_markup=markup, parse_mode='Markdown')
 
@@ -678,7 +527,7 @@ def show_script_info(chat_id, script, is_admin=False):
 def info_callback(call):
     script = get_script(call.data[5:])
     if not script or (script['user_id'] != call.from_user.id and call.from_user.id != ADMIN_ID):
-        bot.answer_callback_query(call.id, t(call.from_user.id, 'no_access')); return
+        bot.answer_callback_query(call.id, "❌"); return
     bot.answer_callback_query(call.id)
     show_script_info(call.message.chat.id, script)
 
@@ -686,44 +535,36 @@ def info_callback(call):
 def admin_script_callback(call):
     script = get_script(call.data[4:])
     if not script or call.from_user.id != ADMIN_ID:
-        bot.answer_callback_query(call.id, t(call.from_user.id, 'no_access')); return
+        bot.answer_callback_query(call.id, "❌"); return
     bot.answer_callback_query(call.id)
     show_script_info(ADMIN_ID, script, is_admin=True)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('tag_'))
-def tag_callback(call):
-    script = get_script(call.data[4:])
-    if not script: bot.answer_callback_query(call.id, "❌"); return
-    msg = bot.send_message(call.message.chat.id, "🏷️ Отправьте теги через запятую:")
-    bot.register_next_step_handler(msg, lambda m: update_script_tags(call.data[4:], m.text.strip()) or bot.reply_to(m, f"✅ {m.text}"))
-    bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('start_'))
 def start_callback(call):
     script = get_script(call.data[6:])
-    if not script: bot.answer_callback_query(call.id, t(call.from_user.id, 'not_found')); return
+    if not script: bot.answer_callback_query(call.id, "❌"); return
     main_path = os.path.join(script['path'], script['main_file']) if script.get('main_file') else (find_py_files(script['path'])[0] if find_py_files(script['path']) else None)
-    if not main_path or not os.path.exists(main_path): bot.answer_callback_query(call.id, t(call.from_user.id, 'file_not_found')); return
+    if not main_path or not os.path.exists(main_path): bot.answer_callback_query(call.id, "❌ Файл не найден"); return
     pid, _ = run_script(call.data[6:], main_path)
-    if pid: update_script_status(call.data[6:], 'running', pid); bot.answer_callback_query(call.id, t(call.from_user.id, 'started_ok'))
+    if pid: update_script_status(call.data[6:], 'running', pid); bot.answer_callback_query(call.id, "✅ Запущен!")
     else: bot.answer_callback_query(call.id, "❌")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('stop_'))
 def stop_callback(call):
     script = get_script(call.data[5:])
-    if not script: bot.answer_callback_query(call.id, t(call.from_user.id, 'not_found')); return
+    if not script: bot.answer_callback_query(call.id, "❌"); return
     if script['status'] == 'running' and script.get('pid'):
         stop_script(script['pid']); update_script_status(call.data[5:], 'stopped')
-        bot.answer_callback_query(call.id, t(call.from_user.id, 'stopped_ok'))
-    else: bot.answer_callback_query(call.id, t(call.from_user.id, 'stopped'))
+        bot.answer_callback_query(call.id, "✅ Остановлен")
+    else: bot.answer_callback_query(call.id, "Уже остановлен")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('log_'))
 def log_callback(call):
     log_path = get_log_path(call.data[4:])
     if os.path.exists(log_path):
         with open(log_path, 'r') as f: content = f.read()[-4000:]
-        bot.send_message(call.message.chat.id, f"📜 Логи:\n```\n{content}\n```", parse_mode='Markdown') if content.strip() else bot.send_message(call.message.chat.id, t(call.from_user.id, 'logs_empty'))
-    else: bot.send_message(call.message.chat.id, t(call.from_user.id, 'logs_not_found'))
+        bot.send_message(call.message.chat.id, f"📜 Логи:\n```\n{content}\n```", parse_mode='Markdown') if content.strip() else bot.send_message(call.message.chat.id, "📜 Логи пустые")
+    else: bot.send_message(call.message.chat.id, "📜 Логов нет")
     bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('delete_'))
@@ -737,7 +578,7 @@ def delete_callback(call):
     cursor.execute('DELETE FROM scripts WHERE id = ?', (call.data[7:],))
     conn.commit()
     bot.answer_callback_query(call.id, "✅")
-    try: bot.edit_message_text(t(call.from_user.id, 'deleted'), call.message.chat.id, call.message.message_id)
+    try: bot.edit_message_text("🗑 Удалён", call.message.chat.id, call.message.message_id)
     except: pass
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_scripts")
@@ -745,7 +586,7 @@ def admin_scripts_list(call): bot.answer_callback_query(call.id); menu_all_scrip
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_premium")
 def admin_give_premium(call):
-    msg = bot.send_message(ADMIN_ID, t(ADMIN_ID, 'give_premium_prompt'))
+    msg = bot.send_message(ADMIN_ID, "📝 ID и дни:\n`123456 30`")
     bot.register_next_step_handler(msg, lambda m: activate_premium(int(m.text.split()[0]), int(m.text.split()[1]) if len(m.text.split()) > 1 else 30) or bot.reply_to(m, "✅"))
     bot.answer_callback_query(call.id)
 
@@ -754,18 +595,18 @@ def admin_give_premium(call):
 def handle_document(message):
     user_id = message.from_user.id
     if not get_user(user_id): create_user(user_id, message.from_user.username)
-    if not check_user_limits(user_id): bot.reply_to(message, t(user_id, 'limit_error')); return
+    if not check_user_limits(user_id): bot.reply_to(message, "❌ Лимит! Нужен 💎 Премиум!"); return
     
     file_info = bot.get_file(message.document.file_id)
     file_name = message.document.file_name
     file_size = message.document.file_size
     max_size = PREMIUM_MAX_SIZE_MB if is_premium(user_id) else FREE_MAX_SIZE_MB
-    if file_size > max_size * 1024 * 1024: bot.reply_to(message, t(user_id, 'max_size_error', max_size)); return
+    if file_size > max_size * 1024 * 1024: bot.reply_to(message, f"❌ Максимум {max_size} МБ!"); return
     
     temp_dir = os.path.join(TEMP_DIR, str(user_id))
     os.makedirs(temp_dir, exist_ok=True)
     temp_path = os.path.join(temp_dir, file_name)
-    msg = bot.reply_to(message, t(user_id, 'uploading'))
+    msg = bot.reply_to(message, "⏳ Загружаю...")
     
     try:
         downloaded = bot.download_file(file_info.file_path)
@@ -788,15 +629,15 @@ def handle_document(message):
         for pf in py_files[:10]:
             rel = os.path.relpath(pf, extract_to)
             markup.add(InlineKeyboardButton(rel, callback_data=f"sel_{rel}"))
-        bot.edit_message_text(t(user_id, 'select_main'), user_id, msg.message_id, reply_markup=markup)
+        bot.edit_message_text("📁 Главный файл:", user_id, msg.message_id, reply_markup=markup)
     else:
         proceed_with_script(user_id, temp_path, file_name)
-        bot.edit_message_text(t(user_id, 'uploaded', file_name), user_id, msg.message_id)
+        bot.edit_message_text(f"✅ {file_name}", user_id, msg.message_id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('sel_'))
 def select_callback(call):
     user_id = call.from_user.id
-    if user_id not in upload_states: bot.answer_callback_query(call.id, t(user_id, 'session_expired')); return
+    if user_id not in upload_states: bot.answer_callback_query(call.id, "❌"); return
     rel_path = call.data[4:]
     state = upload_states[user_id]
     state['selected_main'] = rel_path
@@ -826,7 +667,7 @@ def proceed_with_script(user_id, script_path, original_filename):
     pid, error = run_script(script_id, main_path)
     if pid:
         update_script_status(script_id, 'running', pid)
-        bot.send_message(user_id, t(user_id, 'script_started', original_filename, script_id), parse_mode='Markdown')
+        bot.send_message(user_id, f"✅ **Запущен!**\n📄 {original_filename}\n🆔 `{script_id}`", parse_mode='Markdown')
     else: bot.send_message(user_id, f"❌ {error}")
     try:
         if os.path.exists(state['temp_path']): os.remove(state['temp_path'])
@@ -834,247 +675,77 @@ def proceed_with_script(user_id, script_path, original_filename):
     except: pass
 
 # ========== МОНИТОРИНГ ==========
-def send_notification(user_id, text):
-    try:
-        user = get_user(user_id)
-        if user and user.get('notifications', 1) == 1: bot.send_message(user_id, text, parse_mode='Markdown')
-    except: pass
-
 def monitor():
-    last_expiry_check = datetime.now()
     while True:
         try:
             for s in get_all_running_scripts():
                 if s.get('pid') and not is_process_alive(s['pid']):
-                    send_notification(s['user_id'], t(s['user_id'], 'notification_bot_down', s['name']))
                     main_path = os.path.join(s['path'], s['main_file']) if s.get('main_file') else (find_py_files(s['path'])[0] if find_py_files(s['path']) else None)
                     if main_path and os.path.exists(main_path) and s['restart_count'] < 3:
                         time.sleep(5)
                         pid, err = run_script(s['id'], main_path)
-                        if pid: update_script_status(s['id'], 'running', pid); increment_restart(s['id']); send_notification(s['user_id'], t(s['user_id'], 'notification_restarted', s['name']))
+                        if pid: update_script_status(s['id'], 'running', pid); increment_restart(s['id'])
                     else: update_script_status(s['id'], 'stopped')
-            if (datetime.now() - last_expiry_check).seconds > 3600:
-                cursor.execute("SELECT * FROM users WHERE subscription IN ('premium','trial')")
-                for user in cursor.fetchall():
-                    user = dict(user)
-                    days_left = get_days_left(user['user_id'])
-                    if 0 < days_left <= 3: send_notification(user['user_id'], t(user['user_id'], 'notification_subscription', days_left))
-                    if user['subscription'] == 'trial' and days_left <= 0 and count_user_scripts(user['user_id']) > 0:
-                        activate_premium(user['user_id'], 3)
-                        send_notification(user['user_id'], t(user['user_id'], 'notification_trial_extended'))
-                last_expiry_check = datetime.now()
-        except Exception as e: print(f"Monitor: {e}")
+        except: pass
         time.sleep(MONITOR_INTERVAL)
 
 # ========== ВЕБ-ПАНЕЛЬ ==========
-WEB_PANEL_HTML = r"""
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Python Hosting Panel</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg: #0f0f1a; --card: #1a1a2e; --accent: #667eea; --accent2: #764ba2;
-            --green: #4CAF50; --red: #f44336; --blue: #2196F3;
-            --text: #e0e0e0; --text2: #a0a0b0; --border: #2a2a3e;
-            --radius: 16px; --shadow: 0 8px 32px rgba(0,0,0,0.3);
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            background-image: 
-                radial-gradient(ellipse at 20% 20%, rgba(102, 126, 234, 0.15) 0%, transparent 50%),
-                radial-gradient(ellipse at 80% 80%, rgba(118, 75, 162, 0.1) 0%, transparent 50%);
-        }
-        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
-        .header {
-            background: var(--card); border-radius: var(--radius);
-            padding: 30px; margin-bottom: 24px; box-shadow: var(--shadow);
-            border: 1px solid var(--border); display: flex; align-items: center; gap: 20px;
-        }
-        .avatar {
-            width: 80px; height: 80px; border-radius: 50%;
-            border: 3px solid var(--accent); box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
-        }
-        .user-info h1 { font-size: 24px; font-weight: 700; }
-        .user-info .nick { color: var(--text2); font-size: 14px; }
-        .badge {
-            display: inline-block; padding: 4px 12px; border-radius: 20px;
-            font-size: 12px; font-weight: 600; margin-top: 8px;
-        }
-        .badge.premium { background: linear-gradient(135deg, #f7971e, #ffd200); color: #000; }
-        .badge.trial { background: var(--accent); color: #fff; }
-        .badge.free { background: var(--border); color: var(--text2); }
-        .stats {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px; margin-bottom: 24px;
-        }
-        .stat-card {
-            background: var(--card); border-radius: var(--radius); padding: 24px;
-            text-align: center; box-shadow: var(--shadow); border: 1px solid var(--border);
-            transition: transform 0.2s;
-        }
-        .stat-card:hover { transform: translateY(-4px); }
-        .stat-card .number {
-            font-size: 42px; font-weight: 700;
-            background: linear-gradient(135deg, var(--accent), var(--accent2));
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        }
-        .stat-card .label { color: var(--text2); margin-top: 8px; font-size: 14px; }
-        .card {
-            background: var(--card); border-radius: var(--radius); padding: 24px;
-            margin-bottom: 24px; box-shadow: var(--shadow); border: 1px solid var(--border);
-        }
-        .card h2 { font-size: 18px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
-        .script-item {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 16px; border-radius: 12px; margin-bottom: 8px;
-            background: rgba(255,255,255,0.02); transition: background 0.2s;
-        }
-        .script-item:hover { background: rgba(255,255,255,0.05); }
-        .script-left { display: flex; align-items: center; gap: 12px; }
-        .status-dot {
-            width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
-        }
-        .status-dot.running { background: var(--green); box-shadow: 0 0 10px rgba(76,175,80,0.5); }
-        .status-dot.stopped { background: var(--red); }
-        .script-name { font-weight: 600; }
-        .script-meta { font-size: 12px; color: var(--text2); }
-        .script-actions { display: flex; gap: 8px; }
-        .btn {
-            padding: 8px 16px; border: none; border-radius: 8px;
-            cursor: pointer; font-size: 13px; font-weight: 600;
-            font-family: 'Inter', sans-serif; transition: all 0.2s;
-        }
-        .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-        .btn-start { background: var(--green); color: white; }
-        .btn-stop { background: var(--red); color: white; }
-        .btn-logs { background: var(--blue); color: white; }
-        .log-content {
-            background: #1a1a2e; border: 1px solid var(--border); border-radius: 12px;
-            padding: 16px; font-family: 'Fira Code', monospace; font-size: 12px;
-            max-height: 300px; overflow-y: auto; white-space: pre-wrap;
-            color: #00ff88; margin-top: 8px; display: none;
-        }
-        .log-content.show { display: block; }
-        .plans {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;
-        }
-        .plan-card {
-            background: linear-gradient(135deg, var(--accent), var(--accent2));
-            color: white; border-radius: var(--radius); padding: 24px;
-            text-align: center; transition: transform 0.2s;
-        }
-        .plan-card:hover { transform: scale(1.05); }
-        .plan-card h3 { margin-bottom: 8px; }
-        .plan-card .price { font-size: 36px; font-weight: 700; }
-        .plan-card .period { opacity: 0.8; font-size: 14px; }
-        .loading { text-align: center; padding: 40px; color: var(--text2); }
-        .spinner {
-            width: 40px; height: 40px; border: 3px solid var(--border);
-            border-top-color: var(--accent); border-radius: 50%;
-            animation: spin 0.8s linear infinite; margin: 0 auto 16px;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @media (max-width: 600px) {
-            .script-item { flex-direction: column; gap: 12px; align-items: flex-start; }
-            .script-actions { width: 100%; justify-content: flex-end; }
-            .header { flex-direction: column; text-align: center; }
-        }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: var(--bg); }
-        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header" id="header">
-            <div class="loading"><div class="spinner"></div>Загрузка...</div>
-        </div>
-        <div class="stats" id="stats">
-            <div class="stat-card"><div class="number" id="totalScripts">-</div><div class="label">Всего скриптов</div></div>
-            <div class="stat-card"><div class="number" id="runningScripts">-</div><div class="label">Запущено</div></div>
-            <div class="stat-card"><div class="number" id="daysLeft">-</div><div class="label">Дней подписки</div></div>
-            <div class="stat-card"><div class="number" id="totalRestarts">-</div><div class="label">Перезапусков</div></div>
-        </div>
-        <div class="card">
-            <h2>📱 Мои скрипты</h2>
-            <div id="scriptsList"><div class="loading"><div class="spinner"></div>Загрузка...</div></div>
-        </div>
-        <div class="card">
-            <h2>💎 Тарифы</h2>
-            <div class="plans">
-                <div class="plan-card"><h3>7 дней</h3><div class="price">1.99$</div><div class="period">USDT</div></div>
-                <div class="plan-card"><h3>30 дней</h3><div class="price">4.99$</div><div class="period">USDT</div></div>
-                <div class="plan-card"><h3>60 дней</h3><div class="price">7.99$</div><div class="period">USDT</div></div>
-                <div class="plan-card"><h3>VIP</h3><div class="price">14.99$</div><div class="period">Навсегда</div></div>
-            </div>
-        </div>
-    </div>
-    <script>
-        const params = new URLSearchParams(window.location.search);
-        const userId = params.get('user_id');
-        async function api(path) { const resp = await fetch(`/api${path}?user_id=${userId}`); return resp.json(); }
-        async function loadAll() {
-            try {
-                const data = await api('/scripts');
-                document.getElementById('header').innerHTML = `
-                    <img src="${data.user.avatar || 'https://ui-avatars.com/api/?name=User&background=667eea&color=fff&size=200'}" class="avatar" onerror="this.src='https://ui-avatars.com/api/?name=User&background=667eea&color=fff&size=200'">
-                    <div class="user-info">
-                        <h1>${data.user.name || 'Пользователь'}</h1>
-                        <div class="nick">@${data.user.username || 'unknown'}</div>
-                        <span class="badge ${data.user.subscription}">${data.user.subscription === 'premium' ? '💎 Премиум' : data.user.subscription === 'trial' ? '🆓 Пробный' : 'Бесплатный'}</span>
-                    </div>`;
-                document.getElementById('totalScripts').textContent = data.total;
-                document.getElementById('runningScripts').textContent = data.running;
-                document.getElementById('daysLeft').textContent = data.days_left;
-                document.getElementById('totalRestarts').textContent = data.total_restarts;
-                let html = '';
-                if (data.scripts.length === 0) {
-                    html = '<div style="text-align:center;padding:30px;color:var(--text2)">📭 Нет скриптов</div>';
-                } else {
-                    data.scripts.forEach(s => {
-                        html += `
-                            <div class="script-item">
-                                <div class="script-left">
-                                    <span class="status-dot ${s.status}"></span>
-                                    <div>
-                                        <div class="script-name">${s.name} ${s.tags ? `<span style="color:var(--accent);font-size:12px">[${s.tags}]</span>` : ''}</div>
-                                        <div class="script-meta">${s.size} • ${s.created}</div>
-                                    </div>
-                                </div>
-                                <div class="script-actions">
-                                    ${s.status === 'running' 
-                                        ? `<button class="btn btn-stop" onclick="action('stop','${s.id}')">🛑 Стоп</button>`
-                                        : `<button class="btn btn-start" onclick="action('start','${s.id}')">🚀 Запустить</button>`}
-                                    <button class="btn btn-logs" onclick="toggleLogs('${s.id}')">📜 Логи</button>
-                                </div>
-                            </div>
-                            <div class="log-content" id="logs_${s.id}"></div>`;
-                    });
-                }
-                document.getElementById('scriptsList').innerHTML = html;
-            } catch(e) { console.error(e); }
-        }
-        async function action(type, id) { await api(`/${type}&script_id=${id}`); loadAll(); }
-        async function toggleLogs(id) {
-            const div = document.getElementById(`logs_${id}`);
-            if (div.classList.contains('show')) { div.classList.remove('show'); return; }
-            const data = await api(`/logs&script_id=${id}`);
-            div.textContent = data.logs || 'Логов нет';
-            div.classList.add('show');
-        }
-        loadAll(); setInterval(loadAll, 15000);
-    </script>
-</body>
-</html>
-"""
+WEB_HTML = """<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Hosting Panel</title><style>
+:root{--bg:#0f0f1a;--card:#1a1a2e;--accent:#667eea;--green:#4CAF50;--red:#f44336;--blue:#2196F3;--text:#e0e0e0;--text2:#a0a0b0;--border:#2a2a3e;--radius:16px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:16px}
+.container{max-width:800px;margin:0 auto}
+.card{background:var(--card);border-radius:var(--radius);padding:20px;margin-bottom:16px;border:1px solid var(--border)}
+.header{display:flex;align-items:center;gap:16px}
+.avatar{width:64px;height:64px;border-radius:50%;border:3px solid var(--accent)}
+.user-info h1{font-size:20px}.user-info .nick{color:var(--text2);font-size:14px}
+.badge{display:inline-block;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600;margin-top:6px}
+.badge.premium{background:#ffd200;color:#000}.badge.trial{background:var(--accent);color:#fff}.badge.free{background:var(--border);color:var(--text2)}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px}
+.stat-card{background:var(--card);border-radius:var(--radius);padding:16px;text-align:center;border:1px solid var(--border)}
+.stat-card .number{font-size:32px;font-weight:700;color:var(--accent)}.stat-card .label{color:var(--text2);font-size:13px}
+.script-item{display:flex;justify-content:space-between;align-items:center;padding:12px;border-radius:12px;margin-bottom:6px;background:rgba(255,255,255,0.02)}
+.status-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px}
+.status-dot.running{background:var(--green)}.status-dot.stopped{background:var(--red)}
+.script-name{font-weight:600}.script-meta{font-size:12px;color:var(--text2)}
+.btn{padding:8px 14px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#fff}
+.btn-start{background:var(--green)}.btn-stop{background:var(--red)}.btn-logs{background:var(--blue)}
+.log-content{background:#111;border-radius:8px;padding:12px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto;color:#0f0;margin-top:6px;display:none;white-space:pre-wrap}
+.log-content.show{display:block}
+.plans{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.plan-card{background:linear-gradient(135deg,var(--accent),#764ba2);color:#fff;border-radius:var(--radius);padding:16px;text-align:center}
+.plan-card .price{font-size:28px;font-weight:700}.plan-card .period{opacity:0.8;font-size:13px}
+.loading{text-align:center;padding:20px;color:var(--text2)}
+</style></head><body><div class="container"><div class="header card" id="header"><div class="loading">Загрузка...</div></div>
+<div class="stats"><div class="stat-card"><div class="number" id="t">-</div><div class="label">Скриптов</div></div>
+<div class="stat-card"><div class="number" id="r">-</div><div class="label">Запущено</div></div>
+<div class="stat-card"><div class="number" id="d">-</div><div class="label">Дней</div></div>
+<div class="stat-card"><div class="number" id="re">-</div><div class="label">Рестартов</div></div></div>
+<div class="card"><h3>📱 Скрипты</h3><div id="scriptsList"><div class="loading">Загрузка...</div></div></div>
+<div class="card"><h3>💎 Тарифы</h3><div class="plans"><div class="plan-card"><div class="price">1.99$</div><div class="period">7 дней USDT</div></div>
+<div class="plan-card"><div class="price">4.99$</div><div class="period">30 дней USDT</div></div>
+<div class="plan-card"><div class="price">7.99$</div><div class="period">60 дней USDT</div></div>
+<div class="plan-card"><div class="price">14.99$</div><div class="period">Навсегда VIP</div></div></div></div></div>
+<script>
+const p=new URLSearchParams(location.search);const uid=p.get('user_id');
+async function api(u){const r=await fetch('/api'+u+'?user_id='+uid);return r.json()}
+async function load(){
+try{const d=await api('/scripts');
+document.getElementById('header').innerHTML='<img src="'+(d.user.avatar||'https://ui-avatars.com/api/?name=User&background=667eea&color=fff&size=200')+'" class="avatar" onerror="this.src=\'https://ui-avatars.com/api/?name=User&background=667eea&color=fff&size=200\'"><div class="user-info"><h1>'+(d.user.name||'User')+'</h1><div class="nick">@'+(d.user.username||'unknown')+'</div><span class="badge '+d.user.subscription+'">'+(d.user.subscription==='premium'?'💎 Премиум':d.user.subscription==='trial'?'🆓 Пробный':'Бесплатный')+'</span></div>';
+document.getElementById('t').textContent=d.total;
+document.getElementById('r').textContent=d.running;
+document.getElementById('d').textContent=d.days_left;
+document.getElementById('re').textContent=d.total_restarts;
+let h='';
+if(!d.scripts.length)h='<div style="text-align:center;padding:20px;color:var(--text2)">📭 Нет скриптов</div>';
+else d.scripts.forEach(s=>{h+='<div class="script-item"><div><span class="status-dot '+s.status+'"></span><span class="script-name">'+s.name+'</span><div class="script-meta">'+s.size+' • '+s.created+'</div></div><div>'+(s.status==='running'?'<button class="btn btn-stop" onclick="a(\'stop\',\''+s.id+'\')">Стоп</button>':'<button class="btn btn-start" onclick="a(\'start\',\''+s.id+'\')">Пуск</button>')+' <button class="btn btn-logs" onclick="l(\''+s.id+'\')">Логи</button></div></div><div class="log-content" id="log_'+s.id+'"></div>'});
+document.getElementById('scriptsList').innerHTML=h}catch(e){console.error(e)}}
+async function a(t,id){await api('/'+t+'&script_id='+id);load()}
+async function l(id){const d=document.getElementById('log_'+id);
+if(d.classList.contains('show')){d.classList.remove('show');return}
+const r=await api('/logs&script_id='+id);d.textContent=r.logs||'Логов нет';d.classList.add('show')}
+load();setInterval(load,15000)
+</script></body></html>"""
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -1088,7 +759,7 @@ class WebAPI(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'text/html; charset=utf-8')
             self.end_headers()
-            self.wfile.write(WEB_PANEL_HTML.encode())
+            self.wfile.write(WEB_HTML.encode())
             return
         
         if path.startswith('/api/'):
@@ -1104,21 +775,18 @@ class WebAPI(BaseHTTPRequestHandler):
                 user = get_user(user_id)
                 scripts = get_user_scripts(user_id)
                 running = len([s for s in scripts if s['status'] == 'running'])
-                days = get_days_left(user_id)
-                total_restarts = sum(s['total_restarts'] for s in scripts)
-                
                 result = {
                     'user': {
-                        'name': user['first_name'] if user and user.get('first_name') else 'Пользователь',
+                        'name': user['first_name'] if user else 'User',
                         'username': user['username'] if user else '',
                         'avatar': user['avatar_url'] if user else '',
                         'subscription': user['subscription'] if user else 'free'
                     },
                     'total': len(scripts), 'running': running,
-                    'days_left': days, 'total_restarts': total_restarts,
+                    'days_left': get_days_left(user_id),
+                    'total_restarts': sum(s['total_restarts'] for s in scripts),
                     'scripts': [{'id': s['id'], 'name': s['name'], 'status': s['status'],
-                                 'size': format_size(s['size']), 'restarts': s['total_restarts'],
-                                 'tags': s.get('tags', ''), 'created': s['created_at'][:10] if s['created_at'] else ''} for s in scripts]
+                                 'size': format_size(s['size']), 'created': s['created_at'][:10] if s['created_at'] else ''} for s in scripts]
                 }
                 self.wfile.write(json.dumps(result, ensure_ascii=False).encode())
             
@@ -1127,23 +795,24 @@ class WebAPI(BaseHTTPRequestHandler):
                 script = get_script(script_id)
                 if script:
                     main_path = os.path.join(script['path'], script['main_file']) if script.get('main_file') else (find_py_files(script['path'])[0] if find_py_files(script['path']) else None)
-                    if main_path: pid, _ = run_script(script_id, main_path)
-                    if pid: update_script_status(script_id, 'running', pid)
-                self.wfile.write(json.dumps({'ok': True}).encode())
+                    if main_path:
+                        pid, _ = run_script(script_id, main_path)
+                        if pid: update_script_status(script_id, 'running', pid)
+                self.wfile.write(b'{"ok":true}')
             
             elif 'stop' in api_path:
                 script_id = params.get('script_id', [''])[0]
                 script = get_script(script_id)
                 if script and script.get('pid'):
                     stop_script(script['pid']); update_script_status(script_id, 'stopped')
-                self.wfile.write(json.dumps({'ok': True}).encode())
+                self.wfile.write(b'{"ok":true}')
             
             elif 'logs' in api_path:
                 script_id = params.get('script_id', [''])[0]
                 log_path = get_log_path(script_id)
                 logs = ''
                 if os.path.exists(log_path):
-                    with open(log_path, 'r') as f: logs = f.read()[-10000:]
+                    with open(log_path, 'r') as f: logs = f.read()[-5000:]
                 self.wfile.write(json.dumps({'logs': logs}, ensure_ascii=False).encode())
             
             return
@@ -1151,27 +820,32 @@ class WebAPI(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(WEB_PANEL_HTML.encode())
+        self.wfile.write(WEB_HTML.encode())
     
     def log_message(self, format, *args): pass
 
-def run_web_panel():
-    port = int(os.getenv("PORT", "10000"))
-    server = HTTPServer(('0.0.0.0', port), WebAPI)
-    print(f"🌐 Веб-панель: http://0.0.0.0:{port}/panel")
-    server.serve_forever()
+def run_web():
+    print(f"🌐 Веб-панель на порту {PORT}")
+    HTTPServer(('0.0.0.0', PORT), WebAPI).serve_forever()
 
 # ========== ЗАПУСК ==========
 if __name__ == '__main__':
-    print("=" * 50)
-    print(f"  🚀 HOSTING v{VERSION}")
-    print(f"  👑 Admin: {ADMIN_ID}")
-    print(f"  ☰ Menu WebApp: ON")
-    print(f"  🌐 Web Panel: ON")
-    print("=" * 50)
+    print(f"🚀 HOSTING v{VERSION} | Порт: {PORT}")
     
     threading.Thread(target=monitor, daemon=True).start()
-    threading.Thread(target=run_web_panel, daemon=True).start()
+    threading.Thread(target=run_web, daemon=True).start()
+    
+    # Глобальный Menu Button
+    host = get_host()
+    try:
+        bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="🚀 Панель",
+                web_app=WebAppInfo(url=f"https://{host}/panel")
+        ))
+        print("✅ Menu Button установлен!")
+    except Exception as e:
+        print(f"❌ Menu Button: {e}")
     
     while True:
         try:
