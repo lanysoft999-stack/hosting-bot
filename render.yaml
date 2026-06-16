@@ -1,13 +1,14 @@
 services:
   - type: web
     name: hosting-bot
-    env: docker
+    env: python
     plan: free
-    healthCheckPath: /
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
     envVars:
+      - key: PORT
+        value: "10000"
       - key: BOT_TOKEN
-        value: 8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM
+        value: "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM"
       - key: ADMIN_ID
         value: "314148464"
-      - key: CRYPTO_TOKEN
-        value: 593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX
