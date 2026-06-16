@@ -1,10 +1,16 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
+# Установка зависимостей
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Копируем код
+COPY bot.py .
 
-CMD ["python", "hosting_bot.py"]
+# Создаём папки
+RUN mkdir -p scripts logs temp
+
+# Запускаем бота
+CMD ["python", "bot.py"]
