@@ -3,8 +3,7 @@ services:
     name: hosting-bot
     env: docker
     plan: free
-    buildCommand: ""
-    startCommand: python bot.py
+    healthCheckPath: /
     envVars:
       - key: BOT_TOKEN
         value: 8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM
