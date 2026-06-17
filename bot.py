@@ -25,7 +25,7 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "36.0 FINAL"
+VERSION = "37.0 STABLE"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
@@ -126,8 +126,7 @@ def safe_edit(chat_id, message_id, text, markup=None):
         bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode='Markdown')
         return True
     except:
-        try:
-            bot.send_message(chat_id, text, reply_markup=markup, parse_mode='Markdown')
+        try: bot.send_message(chat_id, text, reply_markup=markup, parse_mode='Markdown')
         except: pass
         return False
 
@@ -328,7 +327,7 @@ def get_main_menu(user_id=None):
         markup.add(KeyboardButton("🎨 Оформление"))
     return markup
 
-# ========== СТАРТ ==========
+# ========== СТАРТ С ПРОВЕРКОЙ ПРАВИЛ ==========
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
     user_id = message.from_user.id
@@ -373,12 +372,15 @@ def cmd_start(message):
                             parse_mode='Markdown')
                     except: pass
     
+    # Проверяем приняты ли правила
     settings = get_user_settings(user_id)
     
     if settings.get('rules_accepted', 0) == 0:
+        # Показываем выбор языка
         show_language_selection(message)
         return
     
+    # Правила приняты — показываем меню
     show_welcome(message)
 
 def show_language_selection(message):
@@ -389,13 +391,19 @@ def show_language_selection(message):
     )
     bot.send_message(message.chat.id, "🌐 **Выберите язык / Choose language:**", reply_markup=markup, parse_mode='Markdown')
 
-def show_rules(message):
-    user_id = message.from_user.id if hasattr(message, 'from_user') else message.chat.id
+def show_rules(message_or_id):
+    """Показывает правила. Принимает message или user_id"""
+    if hasattr(message_or_id, 'chat'):
+        user_id = message_or_id.chat.id
+    else:
+        user_id = message_or_id
+    
     settings = get_user_settings(user_id)
     lang = settings.get('language', 'ru')
     
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("✅ Ознакомлен" if lang == 'ru' else "✅ I Agree", callback_data="accept_rules"))
+    btn_text = "✅ Ознакомлен" if lang == 'ru' else "✅ I Agree"
+    markup.add(InlineKeyboardButton(btn_text, callback_data="accept_rules"))
     
     try:
         bot.send_message(user_id, RULES_TEXT.get(lang, RULES_TEXT['ru']), reply_markup=markup, parse_mode='Markdown')
@@ -403,7 +411,7 @@ def show_rules(message):
         bot.send_message(user_id, RULES_TEXT.get(lang, RULES_TEXT['ru']).replace('*', ''), reply_markup=markup)
 
 def show_welcome(message):
-    user_id = message.from_user.id if hasattr(message, 'from_user') else message.chat.id
+    user_id = message.chat.id if hasattr(message, 'chat') else message.from_user.id
     days = get_days_left(user_id)
     
     if user_id == ADMIN_ID: st = "👑 Admin"
@@ -425,18 +433,18 @@ def choose_start_language(call):
     bot.answer_callback_query(call.id)
     try: bot.delete_message(call.message.chat.id, call.message.message_id)
     except: pass
-    show_rules(call.message)
+    show_rules(call.message.chat.id)
 
 @bot.callback_query_handler(func=lambda call: call.data == "accept_rules")
 def accept_rules_handler(call):
     user_id = call.from_user.id
     accept_rules(user_id)
-    bot.answer_callback_query(call.id)
+    bot.answer_callback_query(call.id, "✅")
     try: bot.delete_message(call.message.chat.id, call.message.message_id)
     except: pass
     show_welcome(call.message)
 
-# ========== ПРОФИЛЬ ==========
+# ========== ОСТАЛЬНЫЕ ОБРАБОТЧИКИ БЕЗ ИЗМЕНЕНИЙ ==========
 @bot.message_handler(func=lambda m: m.text == "👤 Профиль")
 def menu_profile(message):
     user_id = message.from_user.id
@@ -454,7 +462,6 @@ def menu_profile(message):
     if not try_send_media(user_id, 'profile', text, markup):
         bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
 
-# ========== СКРИПТЫ ==========
 @bot.message_handler(func=lambda m: m.text == "📱 Мои скрипты")
 def menu_scripts(message):
     user_id = message.chat.id
@@ -479,14 +486,12 @@ def menu_scripts(message):
     if not try_send_media(user_id, 'scripts', text, markup):
         bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
 
-# ========== ЗАГРУЗКА ==========
 @bot.message_handler(func=lambda m: m.text == "📤 Загрузить")
 def menu_upload(message):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
     bot.send_message(message.chat.id, "📤 Отправьте .py файл или ZIP архив!", reply_markup=markup)
 
-# ========== ПРЕМИУМ ==========
 @bot.message_handler(func=lambda m: m.text == "💎 Премиум")
 def menu_premium(message):
     user_id = message.from_user.id
@@ -507,7 +512,6 @@ def menu_premium(message):
     if not try_send_media(user_id, 'premium', text, markup):
         bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
 
-# ========== РЕФЕРАЛЫ ==========
 @bot.message_handler(func=lambda m: m.text == "👥 Рефералы")
 def menu_ref(message):
     uid = message.from_user.id
@@ -520,7 +524,6 @@ def menu_ref(message):
     if not try_send_media(uid, 'referral', text, markup):
         bot.send_message(uid, text, reply_markup=markup, parse_mode='Markdown')
 
-# ========== АДМИН ==========
 @bot.message_handler(func=lambda m: m.text == "👑 Админ" and m.from_user.id == ADMIN_ID)
 def menu_admin(message):
     sc = get_all_scripts()
@@ -575,7 +578,6 @@ def handle_admin_media(message):
     save_media(section, file_id, file_type, message.caption or '')
     bot.reply_to(message, f"✅ Медиа сохранено для **{section}**!")
 
-# ========== CALLBACKS ==========
 @bot.callback_query_handler(func=lambda call: call.data == "back_main")
 def back_main(call):
     bot.answer_callback_query(call.id)
@@ -630,7 +632,6 @@ def enter_promo(call):
     bot.register_next_step_handler(msg, lambda m: activate_premium(m.from_user.id, 30) or bot.reply_to(m, "✅ Премиум на 30 дней!"))
     bot.answer_callback_query(call.id)
 
-# ========== АДМИН СКРИПТЫ ==========
 @bot.message_handler(func=lambda m: m.text == "🔍 Все скрипты" and m.from_user.id == ADMIN_ID)
 def menu_all_scripts(message):
     sc = get_all_scripts()[:30]
@@ -724,7 +725,6 @@ def del_cb(call):
         try: bot.edit_message_text("🗑", call.message.chat.id, call.message.message_id)
         except: pass
 
-# ========== ЗАГРУЗКА ФАЙЛОВ ==========
 @bot.message_handler(content_types=['document'])
 def handle_doc(message):
     uid = message.from_user.id
@@ -832,9 +832,6 @@ def run_health():
 
 if __name__ == '__main__':
     print(f"🚀 HOSTING v{VERSION}")
-    print(f"⏱️ Trial: {TRIAL_DAYS} дня")
-    print(f"📜 Правила: ВКЛ")
-    
     print("🔄 Очистка старых соединений...")
     try: bot.remove_webhook()
     except: pass
