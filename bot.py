@@ -25,7 +25,7 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "42.0 ULTIMATE"
+VERSION = "43.0 FINAL"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
@@ -47,6 +47,13 @@ PLANS = {
     '7d': {'name': '7d', 'days': 7, 'usdt': 1.99, 'ton': 3.0},
     '30d': {'name': '30d', 'days': 30, 'usdt': 4.99, 'ton': 8.0},
     '60d': {'name': '60d', 'days': 60, 'usdt': 7.99, 'ton': 12.0},
+}
+
+TARIFFS = {
+    'basic': {'name_ru': 'Базовый', 'name_en': 'Basic', 'scripts': 3, 'size_mb': 5, 'cpu_limit': 20, 'ram_mb': 128, 'usdt': 0.99, 'ton': 1.5, 'days': 30},
+    'standart': {'name_ru': 'Стандарт', 'name_en': 'Standard', 'scripts': 10, 'size_mb': 10, 'cpu_limit': 50, 'ram_mb': 512, 'usdt': 4.99, 'ton': 8.0, 'days': 30},
+    'premium': {'name_ru': 'Премиум', 'name_en': 'Premium', 'scripts': 50, 'size_mb': 100, 'cpu_limit': 80, 'ram_mb': 1024, 'usdt': 7.99, 'ton': 12.0, 'days': 30},
+    'vip': {'name_ru': 'VIP', 'name_en': 'VIP', 'scripts': 999, 'size_mb': 1024, 'cpu_limit': 100, 'ram_mb': 2048, 'usdt': 14.99, 'ton': 25.0, 'days': 9999}
 }
 
 for d in [SCRIPTS_DIR, LOGS_DIR, TEMP_DIR, MEDIA_DIR]:
@@ -76,8 +83,11 @@ def init_db():
         caption TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS user_settings (
         user_id INTEGER PRIMARY KEY, language TEXT DEFAULT 'ru', rules_accepted INTEGER DEFAULT 0)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS tariffs (
+        user_id INTEGER PRIMARY KEY, tariff TEXT DEFAULT 'basic',
+        activated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, expiry TIMESTAMP)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS broadcast_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, text TEXT, 
+        id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, text TEXT,
         media_file_id TEXT, media_type TEXT, sent_count INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     for code in ['PREMIUM2024', 'ADMIN', 'MEGA', 'CRYPTO']:
@@ -92,55 +102,59 @@ T = {
         'main_menu': '🌟 Главное меню', 'my_scripts': '📱 Мои скрипты', 'upload': '📤 Загрузить',
         'premium': '💎 Премиум', 'profile': '👤 Профиль', 'referrals': '👥 Рефералы', 'language': '🌐 Язык',
         'admin': '👑 Админ', 'all_scripts': '🔍 Все скрипты', 'design': '🎨 Оформление',
-        'back': '🔙 Назад', 'no_scripts': '📭 Нет скриптов. Отправьте .py файл!',
+        'back': '🔙 Назад', 'no_scripts': '📭 Нет скриптов',
         'upload_prompt': '📤 Отправьте .py файл или ZIP архив!',
         'premium_active': '💎 **Премиум: {} дн**', 'choose_currency': '💰 **Выберите валюту:**',
         'promo': '🔑 Промокод', 'promo_prompt': '🔑 Отправьте промокод:', 'promo_ok': '✅ Премиум на 30 дней!',
-        'paid': '✅ **Оплачено! Премиум на {} дн!** 🎉', 'limit_error': '❌ Лимит!', 'size_error': '❌ Макс {} МБ!',
+        'paid': '✅ **Оплачено!** 🎉', 'limit_error': '❌ Лимит!', 'size_error': '❌ Макс {} МБ!',
         'script_started': '✅ **Запущен!**\n📄 {}\n🆔 `{}`', 'log_empty': '📜 Пусто', 'log_none': '📜 Нет',
         'deleted': '🗑 Удалён', 'no_access': '❌',
         'admin_text': '👑 **Админ-панель**\n📁 Скриптов: {}\n🟢 Запущено: {}',
         'give_premium': '💎 Выдать премиум', 'admin_prompt': '📝 ID и дни:',
-        'broadcast': '📢 Рассылка', 'broadcast_prompt': '📢 Отправьте текст для рассылки (можно с фото/видео):',
-        'broadcast_sent': '✅ Рассылка отправлена! Получили: {} пользователей',
-        'broadcast_error': '❌ Ошибка рассылки',
-        'ref_text': '👥 **Рефералы**\n\n🔗 `https://t.me/{}?start=ref{}`\n👤 Рефералов: {}\n🎁 +5 мин за каждых 2 приглашённых!',
+        'broadcast': '📢 Рассылка', 'broadcast_prompt': '📢 Отправьте текст для рассылки:',
+        'broadcast_sent': '✅ Рассылка отправлена! {} пользователей',
+        'ref_text': '👥 **Рефералы**\n\n🔗 `https://t.me/{}?start=ref{}`\n👤 Рефералов: {}\n🎁 +5 мин за каждых 2',
         'profile_text': '👤 **Профиль**\n\n🆔 `{}`\n📊 {}\n📁 Скриптов: {}/{}\n👥 Рефералов: {}',
         'rules_btn': '✅ Ознакомлен', 'pay': '💳 Оплатить', 'check': '🔄 Проверить',
         'stop': '🛑 Стоп', 'start_btn': '🚀 Пуск', 'logs': '📜 Логи',
-        'replace_file': '📝 Заменить файл', 'replace_prompt': '📝 Отправьте новый .py файл для замены:',
+        'replace_file': '📝 Заменить файл', 'replace_prompt': '📝 Отправьте новый .py файл:',
         'file_replaced': '✅ Файл {} заменён!',
-        'lang_changed': '✅ Язык изменён на Русский', 'lang_select': '🌐 **Выберите язык:**',
+        'lang_changed': '✅ Язык изменён', 'lang_select': '🌐 **Выберите язык:**',
+        'gift_tariff': '🎁 Подарить тариф',
+        'gift_sent': '🎁 **Тариф подарен!**\n👤 @{}\n📦 {}',
+        'gift_received': '🎁 **Вам подарили тариф!**\n👤 @{}\n📦 {}',
     },
     'en': {
         'welcome': '🚀 **Hosting Bot v{}**\n\n👤 {}\n📱 Script Management\n💎 Premium\n👥 Referrals',
         'main_menu': '🌟 Main Menu', 'my_scripts': '📱 My Scripts', 'upload': '📤 Upload',
         'premium': '💎 Premium', 'profile': '👤 Profile', 'referrals': '👥 Referrals', 'language': '🌐 Language',
         'admin': '👑 Admin', 'all_scripts': '🔍 All Scripts', 'design': '🎨 Design',
-        'back': '🔙 Back', 'no_scripts': '📭 No scripts. Send .py file!',
+        'back': '🔙 Back', 'no_scripts': '📭 No scripts',
         'upload_prompt': '📤 Send .py file or ZIP!',
         'premium_active': '💎 **Premium: {} days**', 'choose_currency': '💰 **Choose currency:**',
-        'promo': '🔑 Promo', 'promo_prompt': '🔑 Enter promo code:', 'promo_ok': '✅ Premium 30 days!',
-        'paid': '✅ **Paid! Premium {} days!** 🎉', 'limit_error': '❌ Limit!', 'size_error': '❌ Max {} MB!',
+        'promo': '🔑 Promo', 'promo_prompt': '🔑 Enter promo:', 'promo_ok': '✅ Premium 30 days!',
+        'paid': '✅ **Paid!** 🎉', 'limit_error': '❌ Limit!', 'size_error': '❌ Max {} MB!',
         'script_started': '✅ **Started!**\n📄 {}\n🆔 `{}`', 'log_empty': '📜 Empty', 'log_none': '📜 None',
         'deleted': '🗑 Deleted', 'no_access': '❌',
         'admin_text': '👑 **Admin Panel**\n📁 Scripts: {}\n🟢 Running: {}',
         'give_premium': '💎 Give Premium', 'admin_prompt': '📝 ID and days:',
-        'broadcast': '📢 Broadcast', 'broadcast_prompt': '📢 Send text for broadcast (can attach photo/video):',
-        'broadcast_sent': '✅ Broadcast sent! Received: {} users',
-        'broadcast_error': '❌ Broadcast error',
-        'ref_text': '👥 **Referrals**\n\n🔗 `https://t.me/{}?start=ref{}`\n👤 Referrals: {}\n🎁 +5 min per 2 invited!',
+        'broadcast': '📢 Broadcast', 'broadcast_prompt': '📢 Send broadcast text:',
+        'broadcast_sent': '✅ Broadcast sent! {} users',
+        'ref_text': '👥 **Referrals**\n\n🔗 `https://t.me/{}?start=ref{}`\n👤 Referrals: {}\n🎁 +5 min per 2',
         'profile_text': '👤 **Profile**\n\n🆔 `{}`\n📊 {}\n📁 Scripts: {}/{}\n👥 Referrals: {}',
         'rules_btn': '✅ I Agree', 'pay': '💳 Pay', 'check': '🔄 Check',
         'stop': '🛑 Stop', 'start_btn': '🚀 Start', 'logs': '📜 Logs',
-        'replace_file': '📝 Replace File', 'replace_prompt': '📝 Send new .py file to replace:',
+        'replace_file': '📝 Replace File', 'replace_prompt': '📝 Send new .py file:',
         'file_replaced': '✅ File {} replaced!',
-        'lang_changed': '✅ Language changed to English', 'lang_select': '🌐 **Choose language:**',
+        'lang_changed': '✅ Language changed', 'lang_select': '🌐 **Choose language:**',
+        'gift_tariff': '🎁 Gift Tariff',
+        'gift_sent': '🎁 **Tariff gifted!**\n👤 @{}\n📦 {}',
+        'gift_received': '🎁 **You received a gift!**\n👤 @{}\n📦 {}',
     }
 }
 
 RULES = {
-    'ru': "📜 **Правила Ohosting**\n🚫 Возврата нет.\n⚠️ Исполнитель не несёт ответственности.\n📜 Оплачивая услугу, вы соглашаетесь.\n🛡 Исполнитель вправе изменять условия.\n✅ Нажми **Ознакомлен**",
+    'ru': "📜 **Правила Ohosting**\n🚫 Возврата нет.\n⚠️ Не несём ответственности.\n📜 Оплачивая, вы соглашаетесь.\n🛡 Условия могут меняться.\n✅ Нажми **Ознакомлен**",
     'en': "📜 **Ohosting Rules**\n🚫 No refunds.\n⚠️ Not responsible.\n📜 By paying, you agree.\n🛡 Terms may change.\n✅ Press **I Agree**"
 }
 
@@ -215,6 +229,45 @@ def accept_rules(user_id):
     cursor.execute('UPDATE user_settings SET rules_accepted = 1 WHERE user_id = ?', (user_id,))
     conn.commit()
 
+def get_user_tariff(user_id):
+    cursor.execute('SELECT * FROM tariffs WHERE user_id = ?', (user_id,))
+    row = cursor.fetchone()
+    if not row:
+        cursor.execute('INSERT INTO tariffs (user_id, tariff) VALUES (?,?)', (user_id, 'basic'))
+        conn.commit()
+        return 'basic'
+    if row['expiry']:
+        try:
+            if datetime.fromisoformat(str(row['expiry'])) < datetime.now():
+                cursor.execute('UPDATE tariffs SET tariff = ? WHERE user_id = ?', ('basic', user_id))
+                conn.commit()
+                return 'basic'
+        except: pass
+    return row['tariff']
+
+def activate_tariff(user_id, tariff_key, days=None):
+    if tariff_key not in TARIFFS: return False
+    t = TARIFFS[tariff_key]
+    exp = datetime.now() + timedelta(days=days or t['days'])
+    cursor.execute('INSERT OR REPLACE INTO tariffs (user_id, tariff, activated_at, expiry) VALUES (?,?,?,?)', (user_id, tariff_key, datetime.now(), exp))
+    conn.commit()
+    return True
+
+def get_tariff_limits(user_id):
+    tariff = get_user_tariff(user_id)
+    return TARIFFS.get(tariff, TARIFFS['basic'])
+
+def check_script_limits(user_id):
+    limits = get_tariff_limits(user_id)
+    return count_user_scripts(user_id) < limits['scripts']
+
+def check_size_limit(user_id, size_bytes):
+    limits = get_tariff_limits(user_id)
+    return size_bytes <= limits['size_mb'] * 1024 * 1024
+
+def check_user_limits(user_id):
+    return check_script_limits(user_id)
+
 def is_premium(user_id):
     if user_id == ADMIN_ID: return True
     u = get_user(user_id)
@@ -259,11 +312,8 @@ def add_script(script_id, user_id, name, path, size, main_file=None):
     conn.commit()
 
 def update_script_file(script_id, new_path, new_size, new_name=None):
-    """Обновляет файл скрипта"""
-    if new_name:
-        cursor.execute('UPDATE scripts SET path = ?, size = ?, name = ? WHERE id = ?', (new_path, new_size, new_name, script_id))
-    else:
-        cursor.execute('UPDATE scripts SET path = ?, size = ? WHERE id = ?', (new_path, new_size, script_id))
+    if new_name: cursor.execute('UPDATE scripts SET path = ?, size = ?, name = ? WHERE id = ?', (new_path, new_size, new_name, script_id))
+    else: cursor.execute('UPDATE scripts SET path = ?, size = ? WHERE id = ?', (new_path, new_size, script_id))
     conn.commit()
 
 def update_script_status(script_id, status, pid=None):
@@ -318,14 +368,10 @@ def format_size(s):
     elif s < 1024**3: return f"{s/1024**2:.1f} MB"
     return f"{s/1024**3:.1f} GB"
 
-def check_user_limits(user_id):
-    if is_premium(user_id): return True
-    return count_user_scripts(user_id) < FREE_MAX_SCRIPTS
-
 def create_crypto_invoice(user_id, amount, currency, plan_name):
     url = "https://pay.crypt.bot/api/createInvoice"
     headers = {"Crypto-Pay-API-Token": CRYPTO_TOKEN, "Content-Type": "application/json"}
-    data = {"asset": currency.upper(), "amount": str(amount), "description": f"Hosting Premium - {plan_name}"}
+    data = {"asset": currency.upper(), "amount": str(amount), "description": f"Hosting - {plan_name}"}
     try:
         resp = requests.post(url, json=data, headers=headers, timeout=30)
         result = resp.json()
@@ -350,8 +396,9 @@ def check_crypto_payment(payment_id):
 bot = telebot.TeleBot(TOKEN)
 upload_states = {}
 admin_media_state = {}
-replace_states = {}  # Для замены файлов
-broadcast_state = {}  # Для рассылки
+replace_states = {}
+broadcast_state = {}
+gift_state = {}
 
 def get_main_menu(user_id=None):
     uid = user_id or ADMIN_ID
@@ -459,11 +506,133 @@ def change_language(call):
 def menu_profile(message):
     user_id = message.from_user.id
     days = get_days_left(user_id)
-    st = f"💎 Premium: {days}d" if is_premium(user_id) else (f"🆓 Trial: {days}d" if days > 0 else "🆓 Free")
-    text = t('profile_text', user_id, user_id, st, count_user_scripts(user_id), FREE_MAX_SCRIPTS, get_referral_count(user_id))
+    limits = get_tariff_limits(user_id)
+    tariff = get_user_tariff(user_id)
+    lang = get_user_settings(user_id).get('language', 'ru')
+    tariff_name = TARIFFS[tariff]['name_ru'] if lang == 'ru' else TARIFFS[tariff]['name_en']
+    
+    st = f"💎 {tariff_name}" if is_premium(user_id) else (f"🆓 Trial: {days}d" if days > 0 else "🆓 Free")
+    
+    text = (
+        f"👤 **Профиль**\n\n"
+        f"🆔 `{user_id}`\n"
+        f"📊 {st}\n"
+        f"📁 Скриптов: {count_user_scripts(user_id)}/{limits['scripts']}\n"
+        f"📦 Макс. размер: {limits['size_mb']} МБ\n"
+        f"👥 Рефералов: {get_referral_count(user_id)}"
+    )
+    
     markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(t('gift_tariff', user_id), callback_data="gift_tariff"))
     markup.add(InlineKeyboardButton(t('back', user_id), callback_data="back_main"))
-    if not try_send_media(user_id, 'profile', text, markup): bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
+    
+    bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
+
+# ========== ПОДАРИТЬ ТАРИФ ==========
+@bot.callback_query_handler(func=lambda call: call.data == "gift_tariff")
+def gift_tariff_start(call):
+    user_id = call.from_user.id
+    lang = get_user_settings(user_id).get('language', 'ru')
+    
+    markup = InlineKeyboardMarkup(row_width=1)
+    for key, t in TARIFFS.items():
+        name = t['name_ru'] if lang == 'ru' else t['name_en']
+        markup.add(InlineKeyboardButton(f"{name} — {t['usdt']}$", callback_data=f"giftselect_{key}"))
+    markup.add(InlineKeyboardButton(t('back', user_id), callback_data="back_main"))
+    
+    text = "🎁 **Подарить тариф**\n\nВыберите тариф:"
+    safe_edit(call.message.chat.id, call.message.message_id, text, markup)
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('giftselect_'))
+def gift_select_tariff(call):
+    tariff_key = call.data[11:]
+    if tariff_key not in TARIFFS:
+        bot.answer_callback_query(call.id, "❌")
+        return
+    
+    gift_state[call.from_user.id] = {'tariff': tariff_key, 'step': 'get_user'}
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, "📝 Отправьте Telegram ID получателя:\n/cancel_gift — отмена")
+    bot.register_next_step_handler(msg, process_gift_user)
+
+def process_gift_user(message):
+    if message.text == '/cancel_gift':
+        if message.from_user.id in gift_state: del gift_state[message.from_user.id]
+        bot.reply_to(message, "✅ Отменено")
+        return
+    
+    try: recipient_id = int(message.text.strip())
+    except: bot.reply_to(message, "❌ Неверный ID!"); bot.register_next_step_handler(message, process_gift_user); return
+    
+    recipient = get_user(recipient_id)
+    if not recipient:
+        bot.reply_to(message, "❌ Пользователь не найден!")
+        bot.register_next_step_handler(message, process_gift_user)
+        return
+    
+    user_id = message.from_user.id
+    gift_state[user_id]['recipient_id'] = recipient_id
+    tariff_key = gift_state[user_id]['tariff']
+    t = TARIFFS[tariff_key]
+    
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(InlineKeyboardButton(f"💵 USDT — {t['usdt']}$", callback_data=f"paygift_{tariff_key}_usdt_{recipient_id}"))
+    markup.add(InlineKeyboardButton(f"💎 TON — {t['ton']} TON", callback_data=f"paygift_{tariff_key}_ton_{recipient_id}"))
+    markup.add(InlineKeyboardButton("🔙 Отмена", callback_data="back_main"))
+    
+    bot.send_message(user_id, f"🎁 **Подарок для** `{recipient_id}`\n📦 {t['name_ru']}\n💰 {t['usdt']}$\n\nВыберите оплату:", reply_markup=markup, parse_mode='Markdown')
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('paygift_'))
+def pay_gift(call):
+    _, tariff_key, currency, recipient_id = call.data.split('_')
+    recipient_id = int(recipient_id)
+    t = TARIFFS.get(tariff_key)
+    if not t: bot.answer_callback_query(call.id, "❌"); return
+    
+    uid = call.from_user.id
+    inv = create_crypto_invoice(uid, t[currency], currency, f"Gift {t['name_en']}")
+    
+    if inv:
+        url = inv.get("bot_invoice_url", "")
+        markup = InlineKeyboardMarkup()
+        if url: markup.add(InlineKeyboardButton(t('pay', uid), url=url))
+        markup.add(InlineKeyboardButton(t('check', uid), callback_data=f"checkgift_{inv['invoice_id']}_{tariff_key}_{recipient_id}"))
+        bot.send_message(uid, f"💰 **Счёт:** {t[currency]} {currency.upper()}\n🎁 Для: `{recipient_id}`", reply_markup=markup, parse_mode='Markdown')
+    else: bot.send_message(uid, "❌ Ошибка")
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('checkgift_'))
+def check_gift_payment(call):
+    _, pid, tariff_key, recipient_id = call.data.split('_')
+    recipient_id = int(recipient_id)
+    uid = call.from_user.id
+    r = check_crypto_payment(pid)
+    
+    if r and r.get("status") == "paid":
+        cursor.execute("UPDATE crypto_payments SET status = 'paid' WHERE payment_id = ?", (pid,))
+        conn.commit()
+        
+        t = TARIFFS[tariff_key]
+        activate_tariff(recipient_id, tariff_key, t['days'])
+        
+        safe_edit(call.message.chat.id, call.message.message_id, f"✅ **Подарок отправлен!**\n👤 `{recipient_id}`\n📦 {t['name_ru']}")
+        
+        try:
+            sender = call.from_user.first_name or call.from_user.username or 'User'
+            bot.send_message(recipient_id, t('gift_received', recipient_id, escape_md(str(sender)), t['name_ru']), parse_mode='Markdown')
+        except: pass
+        
+        if uid in gift_state: del gift_state[uid]
+    elif r and r.get("status") == "active": bot.answer_callback_query(call.id, "⏳")
+    else: bot.answer_callback_query(call.id, "❌")
+
+@bot.message_handler(commands=['cancel_gift'])
+def cancel_gift_cmd(message):
+    if message.from_user.id in gift_state:
+        del gift_state[message.from_user.id]
+        bot.reply_to(message, "✅ Отменено")
+    else: bot.reply_to(message, "Нет активного подарка")
 
 # ========== СКРИПТЫ ==========
 @bot.message_handler(func=lambda m: m.text in [T['ru']['my_scripts'], T['en']['my_scripts']])
@@ -483,20 +652,15 @@ def menu_scripts(message):
     markup.add(InlineKeyboardButton(t('back', user_id), callback_data="back_main"))
     bot.send_message(user_id, "📋 **Скрипты:**", reply_markup=markup, parse_mode='Markdown')
 
-# ========== ЗАМЕНА ФАЙЛА ==========
 @bot.callback_query_handler(func=lambda call: call.data == "replace_menu")
 def replace_menu(call):
     user_id = call.from_user.id
     scripts = get_user_scripts(user_id)
-    if not scripts:
-        bot.answer_callback_query(call.id, "Нет скриптов")
-        return
-    
+    if not scripts: bot.answer_callback_query(call.id, "Нет скриптов"); return
     markup = InlineKeyboardMarkup(row_width=1)
     for s in scripts[:20]:
         markup.add(InlineKeyboardButton(f"📝 {escape_md(s['name'][:30])}", callback_data=f"replace_{s['id']}"))
     markup.add(InlineKeyboardButton(t('back', user_id), callback_data="back_main"))
-    
     safe_edit(call.message.chat.id, call.message.message_id, t('replace_prompt', user_id), markup)
     bot.answer_callback_query(call.id)
 
@@ -504,39 +668,36 @@ def replace_menu(call):
 def replace_file_prompt(call):
     script_id = call.data[8:]
     script = get_script(script_id)
-    if not script:
-        bot.answer_callback_query(call.id, "❌ Не найден")
-        return
-    
+    if not script: bot.answer_callback_query(call.id, "❌"); return
     replace_states[call.from_user.id] = script_id
     bot.answer_callback_query(call.id)
-    bot.send_message(call.message.chat.id, f"📝 Отправьте новый .py файл для замены **{escape_md(script['name'])}**\n\n/cancel_replace — отмена", parse_mode='Markdown')
+    bot.send_message(call.message.chat.id, f"📝 Отправьте новый .py для **{escape_md(script['name'])}**\n/cancel_replace — отмена", parse_mode='Markdown')
 
 @bot.message_handler(commands=['cancel_replace'])
-def cancel_replace(message):
+def cancel_replace_cmd(message):
     if message.from_user.id in replace_states:
         del replace_states[message.from_user.id]
-        bot.reply_to(message, "✅ Замена отменена")
-    else:
-        bot.reply_to(message, "Нет активной замены")
+        bot.reply_to(message, "✅ Отменено")
 
-# ========== ЗАГРУЗКА (ОБРАБОТКА ЗАМЕНЫ) ==========
 @bot.message_handler(content_types=['document'])
 def handle_doc(message):
     uid = message.from_user.id
     
-    # Проверяем — это замена файла или новый скрипт
     if uid in replace_states:
         handle_file_replace(message)
         return
     
-    # Обычная загрузка нового скрипта
     if not get_user(uid): create_user(uid, message.from_user.username)
     if not check_user_limits(uid): bot.reply_to(message, t('limit_error', uid)); return
+    
     fi = bot.get_file(message.document.file_id)
     fn, fs = message.document.file_name, message.document.file_size
-    mx = PREMIUM_MAX_SIZE_MB if is_premium(uid) else FREE_MAX_SIZE_MB
-    if fs > mx*1024*1024: bot.reply_to(message, t('size_error', uid, mx)); return
+    
+    if not check_size_limit(uid, fs):
+        limits = get_tariff_limits(uid)
+        bot.reply_to(message, t('size_error', uid, limits['size_mb']))
+        return
+    
     td = os.path.join(TEMP_DIR, str(uid))
     os.makedirs(td, exist_ok=True)
     tp = os.path.join(td, fn)
@@ -545,8 +706,10 @@ def handle_doc(message):
         dl = bot.download_file(fi.file_path)
         with open(tp, 'wb') as f: f.write(dl)
     except: bot.edit_message_text("❌", uid, msg.message_id); return
+    
     sid = str(uuid.uuid4())[:8]
     upload_states[uid] = {'script_id': sid, 'temp_path': tp, 'file_name': fn, 'file_size': fs, 'msg_id': msg.message_id}
+    
     if fn.lower().endswith('.zip'):
         et = os.path.join(TEMP_DIR, str(uid), sid)
         os.makedirs(et, exist_ok=True)
@@ -564,41 +727,27 @@ def handle_doc(message):
         bot.edit_message_text(f"✅ {fn}", uid, msg.message_id)
 
 def handle_file_replace(message):
-    """Обрабатывает замену файла скрипта"""
     uid = message.from_user.id
     script_id = replace_states.pop(uid)
     script = get_script(script_id)
-    
-    if not script:
-        bot.reply_to(message, "❌ Скрипт не найден")
-        return
+    if not script: bot.reply_to(message, "❌"); return
     
     fi = bot.get_file(message.document.file_id)
     fn, fs = message.document.file_name, message.document.file_size
+    if not fn.endswith('.py'): bot.reply_to(message, "❌ Только .py!"); return
     
-    # Проверяем расширение
-    if not fn.endswith('.py'):
-        bot.reply_to(message, "❌ Только .py файлы!")
+    limits = get_tariff_limits(uid)
+    if fs > limits['size_mb'] * 1024 * 1024:
+        bot.reply_to(message, t('size_error', uid, limits['size_mb']))
         return
     
-    mx = PREMIUM_MAX_SIZE_MB if is_premium(uid) else FREE_MAX_SIZE_MB
-    if fs > mx*1024*1024:
-        bot.reply_to(message, t('size_error', uid, mx))
-        return
-    
-    msg = bot.reply_to(message, "⏳ Заменяю...")
-    
+    msg = bot.reply_to(message, "⏳")
     try:
         dl = bot.download_file(fi.file_path)
-        
-        # Сохраняем новый файл
         new_path = os.path.join(script['path'], fn)
         with open(new_path, 'wb') as f: f.write(dl)
-        
-        # Обновляем в базе
         update_script_file(script_id, new_path, fs, fn)
         
-        # Если скрипт запущен — перезапускаем
         if script['status'] == 'running' and script.get('pid'):
             stop_script(script['pid'])
             pid, _ = run_script(script_id, new_path)
@@ -606,159 +755,7 @@ def handle_file_replace(message):
         
         bot.edit_message_text(t('file_replaced', uid, fn), uid, msg.message_id)
     except Exception as e:
-        bot.edit_message_text(f"❌ Ошибка: {str(e)[:200]}", uid, msg.message_id)
-
-# ========== РАССЫЛКА ==========
-@bot.message_handler(commands=['broadcast'])
-def cmd_broadcast(message):
-    if message.from_user.id != ADMIN_ID:
-        bot.reply_to(message, "❌ Только админ")
-        return
-    
-    broadcast_state[message.from_user.id] = {'step': 'text'}
-    bot.reply_to(message, t('broadcast_prompt', ADMIN_ID))
-
-@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.from_user.id in broadcast_state)
-def handle_broadcast(message):
-    state = broadcast_state[message.from_user.id]
-    
-    if state['step'] == 'text':
-        # Сохраняем текст
-        state['text'] = message.text or message.caption or ''
-        
-        # Проверяем есть ли медиа
-        if message.content_type == 'photo':
-            state['media_file_id'] = message.photo[-1].file_id
-            state['media_type'] = 'photo'
-        elif message.content_type == 'video':
-            state['media_file_id'] = message.video.file_id
-            state['media_type'] = 'video'
-        elif message.content_type == 'animation':
-            state['media_file_id'] = message.animation.file_id
-            state['media_type'] = 'animation'
-        
-        # Отправляем рассылку
-        send_broadcast(state)
-        del broadcast_state[message.from_user.id]
-
-def send_broadcast(state):
-    """Отправляет рассылку всем пользователям"""
-    users = get_all_users()
-    sent = 0
-    
-    for user_id in users:
-        try:
-            if state.get('media_file_id'):
-                if state['media_type'] == 'photo':
-                    bot.send_photo(user_id, state['media_file_id'], caption=state.get('text', ''), parse_mode='Markdown')
-                elif state['media_type'] == 'video':
-                    bot.send_video(user_id, state['media_file_id'], caption=state.get('text', ''), parse_mode='Markdown')
-                elif state['media_type'] == 'animation':
-                    bot.send_animation(user_id, state['media_file_id'], caption=state.get('text', ''), parse_mode='Markdown')
-            else:
-                bot.send_message(user_id, state.get('text', ''), parse_mode='Markdown')
-            sent += 1
-        except:
-            pass
-        time.sleep(0.1)  # Защита от флуда
-    
-    # Сохраняем в историю
-    cursor.execute("INSERT INTO broadcast_history (admin_id, text, media_file_id, media_type, sent_count) VALUES (?,?,?,?,?)",
-                   (ADMIN_ID, state.get('text', ''), state.get('media_file_id'), state.get('media_type'), sent))
-    conn.commit()
-    
-    bot.send_message(ADMIN_ID, t('broadcast_sent', ADMIN_ID, sent))
-
-# ========== АДМИН-ПАНЕЛЬ ==========
-@bot.message_handler(func=lambda m: m.text in [T['ru']['admin'], T['en']['admin']] and m.from_user.id == ADMIN_ID)
-def menu_admin(message):
-    sc = get_all_scripts()
-    rn = len([s for s in sc if s['status'] == 'running'])
-    users_count = len(get_all_users())
-    
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(InlineKeyboardButton("🔍 Все скрипты", callback_data="adm_scr"))
-    markup.add(InlineKeyboardButton("💎 Выдать премиум", callback_data="adm_prem"))
-    markup.add(InlineKeyboardButton("📢 Рассылка", callback_data="adm_broadcast"))
-    markup.add(InlineKeyboardButton("🎨 Оформление", callback_data="adm_media"))
-    markup.add(InlineKeyboardButton("📊 Статистика", callback_data="adm_stats"))
-    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
-    
-    text = f"👑 **Админ-панель**\n\n📁 Скриптов: {len(sc)}\n🟢 Запущено: {rn}\n👥 Пользователей: {users_count}"
-    bot.send_message(ADMIN_ID, text, reply_markup=markup, parse_mode='Markdown')
-
-@bot.callback_query_handler(func=lambda call: call.data == "adm_broadcast")
-def adm_broadcast_cb(call):
-    bot.answer_callback_query(call.id)
-    broadcast_state[call.from_user.id] = {'step': 'text'}
-    bot.send_message(ADMIN_ID, t('broadcast_prompt', ADMIN_ID))
-
-@bot.callback_query_handler(func=lambda call: call.data == "adm_stats")
-def adm_stats_cb(call):
-    bot.answer_callback_query(call.id)
-    users = get_all_users()
-    scripts = get_all_scripts()
-    running = len([s for s in scripts if s['status'] == 'running'])
-    premium_users = len([u for u in users if is_premium(u)])
-    
-    text = f"📊 **Статистика**\n\n👥 Пользователей: {len(users)}\n💎 Премиум: {premium_users}\n📁 Скриптов: {len(scripts)}\n🟢 Запущено: {running}\n💾 Размер БД: {format_size(os.path.getsize(DATABASE_PATH))}"
-    bot.send_message(ADMIN_ID, text, parse_mode='Markdown')
-
-# ========== ОСТАЛЬНЫЕ CALLBACKS ==========
-@bot.callback_query_handler(func=lambda call: call.data == "back_main")
-def back_main(call):
-    bot.answer_callback_query(call.id)
-    try: bot.delete_message(call.message.chat.id, call.message.message_id)
-    except: pass
-    bot.send_message(call.message.chat.id, t('main_menu', call.from_user.id), reply_markup=get_main_menu(call.from_user.id))
-
-@bot.callback_query_handler(func=lambda call: call.data == "back_prem")
-def back_prem(call): bot.answer_callback_query(call.id); menu_premium(call.message)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('m_'))
-def choose_plan(call):
-    cur = call.data[2:]
-    bot.answer_callback_query(call.id)
-    markup = InlineKeyboardMarkup(row_width=1)
-    for k, p in PLANS.items(): markup.add(InlineKeyboardButton(f"{p['name']} — {p[cur]} {cur.upper()}", callback_data=f"buy_{k}_{cur}"))
-    markup.add(InlineKeyboardButton(t('back', call.from_user.id), callback_data="back_prem"))
-    safe_edit(call.message.chat.id, call.message.message_id, f"📅 **{cur.upper()}:**", markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('buy_'))
-def create_invoice(call):
-    _, k, cur = call.data.split('_')
-    p = PLANS.get(k)
-    if not p: return
-    inv = create_crypto_invoice(call.from_user.id, p[cur], cur, p['name'])
-    uid = call.from_user.id
-    if inv:
-        url = inv.get("bot_invoice_url", "")
-        markup = InlineKeyboardMarkup()
-        if url: markup.add(InlineKeyboardButton(t('pay', uid), url=url))
-        markup.add(InlineKeyboardButton(t('check', uid), callback_data=f"check_{inv['invoice_id']}_{p['days']}"))
-        markup.add(InlineKeyboardButton(t('back', uid), callback_data="back_prem"))
-        bot.send_message(uid, f"💰 **Счёт:** {p[cur]} {cur.upper()}\n📅 {p['name']}", reply_markup=markup, parse_mode='Markdown')
-    else: bot.send_message(uid, t('payment_error', uid))
-    bot.answer_callback_query(call.id)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('check_'))
-def check_payment(call):
-    _, pid, days = call.data.split('_')
-    uid = call.from_user.id
-    r = check_crypto_payment(pid)
-    if r and r.get("status") == "paid":
-        cursor.execute("UPDATE crypto_payments SET status = 'paid' WHERE payment_id = ?", (pid,))
-        conn.commit()
-        activate_premium(uid, int(days))
-        safe_edit(call.message.chat.id, call.message.message_id, t('paid', uid, days))
-    elif r and r.get("status") == "active": bot.answer_callback_query(call.id, t('waiting', uid))
-    else: bot.answer_callback_query(call.id, t('not_paid', uid))
-
-@bot.callback_query_handler(func=lambda call: call.data == "promo")
-def enter_promo(call):
-    msg = bot.send_message(call.message.chat.id, t('promo_prompt', call.from_user.id))
-    bot.register_next_step_handler(msg, lambda m: activate_premium(m.from_user.id, 30) or bot.reply_to(m, t('promo_ok', m.from_user.id)))
-    bot.answer_callback_query(call.id)
+        bot.edit_message_text(f"❌ {str(e)[:200]}", uid, msg.message_id)
 
 # ========== ПРЕМИУМ ==========
 @bot.message_handler(func=lambda m: m.text in [T['ru']['premium'], T['en']['premium']])
@@ -792,6 +789,118 @@ def menu_upload(message):
     markup.add(InlineKeyboardButton(t('back', message.chat.id), callback_data="back_main"))
     bot.send_message(message.chat.id, t('upload_prompt', message.chat.id), reply_markup=markup)
 
+# ========== АДМИН ==========
+@bot.message_handler(func=lambda m: m.text in [T['ru']['admin'], T['en']['admin']] and m.from_user.id == ADMIN_ID)
+def menu_admin(message):
+    sc = get_all_scripts()
+    rn = len([s for s in sc if s['status'] == 'running'])
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(InlineKeyboardButton(t('all_scripts', ADMIN_ID), callback_data="adm_scr"))
+    markup.add(InlineKeyboardButton(t('give_premium', ADMIN_ID), callback_data="adm_prem"))
+    markup.add(InlineKeyboardButton(t('broadcast', ADMIN_ID), callback_data="adm_broadcast"))
+    markup.add(InlineKeyboardButton(t('design', ADMIN_ID), callback_data="adm_media"))
+    markup.add(InlineKeyboardButton("📊 Статистика", callback_data="adm_stats"))
+    markup.add(InlineKeyboardButton(t('back', ADMIN_ID), callback_data="back_main"))
+    bot.send_message(ADMIN_ID, t('admin_text', ADMIN_ID, len(sc), rn), reply_markup=markup, parse_mode='Markdown')
+
+@bot.callback_query_handler(func=lambda call: call.data == "adm_broadcast")
+def adm_broadcast_cb(call):
+    bot.answer_callback_query(call.id)
+    broadcast_state[call.from_user.id] = {'step': 'text'}
+    bot.send_message(ADMIN_ID, t('broadcast_prompt', ADMIN_ID))
+
+@bot.callback_query_handler(func=lambda call: call.data == "adm_stats")
+def adm_stats_cb(call):
+    bot.answer_callback_query(call.id)
+    users = get_all_users()
+    scripts = get_all_scripts()
+    running = len([s for s in scripts if s['status'] == 'running'])
+    text = f"📊 **Статистика**\n\n👥 Пользователей: {len(users)}\n📁 Скриптов: {len(scripts)}\n🟢 Запущено: {running}"
+    bot.send_message(ADMIN_ID, text, parse_mode='Markdown')
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.from_user.id in broadcast_state)
+def handle_broadcast(message):
+    state = broadcast_state[message.from_user.id]
+    state['text'] = message.text or message.caption or ''
+    if message.content_type == 'photo': state['media_file_id'], state['media_type'] = message.photo[-1].file_id, 'photo'
+    elif message.content_type == 'video': state['media_file_id'], state['media_type'] = message.video.file_id, 'video'
+    elif message.content_type == 'animation': state['media_file_id'], state['media_type'] = message.animation.file_id, 'animation'
+    
+    users = get_all_users()
+    sent = 0
+    for uid in users:
+        try:
+            if state.get('media_file_id'):
+                if state['media_type'] == 'photo': bot.send_photo(uid, state['media_file_id'], caption=state.get('text',''), parse_mode='Markdown')
+                elif state['media_type'] == 'video': bot.send_video(uid, state['media_file_id'], caption=state.get('text',''), parse_mode='Markdown')
+                elif state['media_type'] == 'animation': bot.send_animation(uid, state['media_file_id'], caption=state.get('text',''), parse_mode='Markdown')
+            else: bot.send_message(uid, state.get('text',''), parse_mode='Markdown')
+            sent += 1
+        except: pass
+        time.sleep(0.1)
+    
+    cursor.execute("INSERT INTO broadcast_history (admin_id, text, media_file_id, media_type, sent_count) VALUES (?,?,?,?,?)",
+                   (ADMIN_ID, state.get('text',''), state.get('media_file_id'), state.get('media_type'), sent))
+    conn.commit()
+    bot.send_message(ADMIN_ID, t('broadcast_sent', ADMIN_ID, sent))
+    del broadcast_state[message.from_user.id]
+
+# ========== CALLBACKS ==========
+@bot.callback_query_handler(func=lambda call: call.data == "back_main")
+def back_main(call):
+    bot.answer_callback_query(call.id)
+    try: bot.delete_message(call.message.chat.id, call.message.message_id)
+    except: pass
+    bot.send_message(call.message.chat.id, t('main_menu', call.from_user.id), reply_markup=get_main_menu(call.from_user.id))
+
+@bot.callback_query_handler(func=lambda call: call.data == "back_prem")
+def back_prem(call): bot.answer_callback_query(call.id); menu_premium(call.message)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('m_'))
+def choose_plan(call):
+    cur = call.data[2:]
+    bot.answer_callback_query(call.id)
+    markup = InlineKeyboardMarkup(row_width=1)
+    for k, p in PLANS.items(): markup.add(InlineKeyboardButton(f"{p['name']} — {p[cur]} {cur.upper()}", callback_data=f"buy_{k}_{cur}"))
+    markup.add(InlineKeyboardButton(t('back', call.from_user.id), callback_data="back_prem"))
+    safe_edit(call.message.chat.id, call.message.message_id, f"📅 **{cur.upper()}:**", markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('buy_'))
+def create_invoice(call):
+    _, k, cur = call.data.split('_')
+    p = PLANS.get(k)
+    if not p: return
+    inv = create_crypto_invoice(call.from_user.id, p[cur], cur, p['name'])
+    uid = call.from_user.id
+    if inv:
+        url = inv.get("bot_invoice_url", "")
+        markup = InlineKeyboardMarkup()
+        if url: markup.add(InlineKeyboardButton(t('pay', uid), url=url))
+        markup.add(InlineKeyboardButton(t('check', uid), callback_data=f"check_{inv['invoice_id']}_{p['days']}"))
+        markup.add(InlineKeyboardButton(t('back', uid), callback_data="back_prem"))
+        bot.send_message(uid, f"💰 **Счёт:** {p[cur]} {cur.upper()}\n📅 {p['name']}", reply_markup=markup, parse_mode='Markdown')
+    else: bot.send_message(uid, "❌ Ошибка")
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('check_'))
+def check_payment(call):
+    _, pid, days = call.data.split('_')
+    uid = call.from_user.id
+    r = check_crypto_payment(pid)
+    if r and r.get("status") == "paid":
+        cursor.execute("UPDATE crypto_payments SET status = 'paid' WHERE payment_id = ?", (pid,))
+        conn.commit()
+        activate_premium(uid, int(days))
+        safe_edit(call.message.chat.id, call.message.message_id, t('paid', uid))
+    elif r and r.get("status") == "active": bot.answer_callback_query(call.id, "⏳")
+    else: bot.answer_callback_query(call.id, "❌")
+
+@bot.callback_query_handler(func=lambda call: call.data == "promo")
+def enter_promo(call):
+    msg = bot.send_message(call.message.chat.id, t('promo_prompt', call.from_user.id))
+    bot.register_next_step_handler(msg, lambda m: activate_premium(m.from_user.id, 30) or bot.reply_to(m, t('promo_ok', m.from_user.id)))
+    bot.answer_callback_query(call.id)
+
 # ========== АДМИН СКРИПТЫ ==========
 @bot.callback_query_handler(func=lambda call: call.data == "adm_scr")
 def adm_scr_cb(call): bot.answer_callback_query(call.id); menu_all_scripts(call.message)
@@ -810,8 +919,7 @@ def adm_cb(call):
     if call.data in ['adm_scr', 'adm_prem', 'adm_media', 'adm_broadcast', 'adm_stats']: return
     s = get_script(call.data[4:])
     if s and call.from_user.id == ADMIN_ID:
-        bot.answer_callback_query(call.id)
-        show_script_info(ADMIN_ID, s, True)
+        bot.answer_callback_query(call.id); show_script_info(ADMIN_ID, s, True)
     else: bot.answer_callback_query(call.id, "❌")
 
 @bot.message_handler(func=lambda m: m.text in [T['ru']['all_scripts'], T['en']['all_scripts']] and m.from_user.id == ADMIN_ID)
@@ -915,7 +1023,7 @@ def delete_media(call):
     section = call.data[9:]
     cursor.execute("DELETE FROM media WHERE section = ?", (section,))
     conn.commit()
-    safe_edit(call.message.chat.id, call.message.message_id, t('media_deleted', ADMIN_ID, section))
+    safe_edit(call.message.chat.id, call.message.message_id, f"✅ Медиа удалено для **{section}**")
     bot.answer_callback_query(call.id, "✅")
 
 @bot.message_handler(content_types=['photo', 'video', 'animation'])
@@ -927,7 +1035,7 @@ def handle_admin_media(message):
     elif message.content_type == 'animation': fid, ftype = message.animation.file_id, 'animation'
     else: return
     save_media(section, fid, ftype, message.caption or '')
-    bot.reply_to(message, t('media_saved', ADMIN_ID, section))
+    bot.reply_to(message, f"✅ Медиа сохранено для **{section}**!")
 
 # ========== PROCEED SCRIPT ==========
 @bot.callback_query_handler(func=lambda call: call.data.startswith('sel_'))
