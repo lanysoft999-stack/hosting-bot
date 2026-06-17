@@ -25,8 +25,8 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "43.0 FINAL"
-TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
+VERSION = "44.0 FIXED"
+TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAGszxCQC51K7UNOdhtK08HJMk-iGVT49tw")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
 PORT = int(os.getenv("PORT", "10000"))
@@ -111,13 +111,13 @@ T = {
         'deleted': '🗑 Удалён', 'no_access': '❌',
         'admin_text': '👑 **Админ-панель**\n📁 Скриптов: {}\n🟢 Запущено: {}',
         'give_premium': '💎 Выдать премиум', 'admin_prompt': '📝 ID и дни:',
-        'broadcast': '📢 Рассылка', 'broadcast_prompt': '📢 Отправьте текст для рассылки:',
-        'broadcast_sent': '✅ Рассылка отправлена! {} пользователей',
+        'broadcast': '📢 Рассылка', 'broadcast_prompt': '📢 Отправьте текст для рассылки (можно с фото/видео):',
+        'broadcast_sent': '✅ Рассылка отправлена! Получили: {} пользователей',
         'ref_text': '👥 **Рефералы**\n\n🔗 `https://t.me/{}?start=ref{}`\n👤 Рефералов: {}\n🎁 +5 мин за каждых 2',
         'profile_text': '👤 **Профиль**\n\n🆔 `{}`\n📊 {}\n📁 Скриптов: {}/{}\n👥 Рефералов: {}',
         'rules_btn': '✅ Ознакомлен', 'pay': '💳 Оплатить', 'check': '🔄 Проверить',
         'stop': '🛑 Стоп', 'start_btn': '🚀 Пуск', 'logs': '📜 Логи',
-        'replace_file': '📝 Заменить файл', 'replace_prompt': '📝 Отправьте новый .py файл:',
+        'replace_file': '📝 Заменить файл', 'replace_prompt': '📝 Отправьте новый .py файл для замены:',
         'file_replaced': '✅ Файл {} заменён!',
         'lang_changed': '✅ Язык изменён', 'lang_select': '🌐 **Выберите язык:**',
         'gift_tariff': '🎁 Подарить тариф',
@@ -138,8 +138,8 @@ T = {
         'deleted': '🗑 Deleted', 'no_access': '❌',
         'admin_text': '👑 **Admin Panel**\n📁 Scripts: {}\n🟢 Running: {}',
         'give_premium': '💎 Give Premium', 'admin_prompt': '📝 ID and days:',
-        'broadcast': '📢 Broadcast', 'broadcast_prompt': '📢 Send broadcast text:',
-        'broadcast_sent': '✅ Broadcast sent! {} users',
+        'broadcast': '📢 Broadcast', 'broadcast_prompt': '📢 Send broadcast text (can attach photo/video):',
+        'broadcast_sent': '✅ Broadcast sent! Received: {} users',
         'ref_text': '👥 **Referrals**\n\n🔗 `https://t.me/{}?start=ref{}`\n👤 Referrals: {}\n🎁 +5 min per 2',
         'profile_text': '👤 **Profile**\n\n🆔 `{}`\n📊 {}\n📁 Scripts: {}/{}\n👥 Referrals: {}',
         'rules_btn': '✅ I Agree', 'pay': '💳 Pay', 'check': '🔄 Check',
@@ -826,15 +826,16 @@ def handle_broadcast(message):
     elif message.content_type == 'video': state['media_file_id'], state['media_type'] = message.video.file_id, 'video'
     elif message.content_type == 'animation': state['media_file_id'], state['media_type'] = message.animation.file_id, 'animation'
     
+    # Отправляем ВСЕМ пользователям
     users = get_all_users()
     sent = 0
     for uid in users:
         try:
             if state.get('media_file_id'):
-                if state['media_type'] == 'photo': bot.send_photo(uid, state['media_file_id'], caption=state.get('text',''), parse_mode='Markdown')
-                elif state['media_type'] == 'video': bot.send_video(uid, state['media_file_id'], caption=state.get('text',''), parse_mode='Markdown')
-                elif state['media_type'] == 'animation': bot.send_animation(uid, state['media_file_id'], caption=state.get('text',''), parse_mode='Markdown')
-            else: bot.send_message(uid, state.get('text',''), parse_mode='Markdown')
+                if state['media_type'] == 'photo': bot.send_photo(uid, state['media_file_id'], caption=state.get('text',''))
+                elif state['media_type'] == 'video': bot.send_video(uid, state['media_file_id'], caption=state.get('text',''))
+                elif state['media_type'] == 'animation': bot.send_animation(uid, state['media_file_id'], caption=state.get('text',''))
+            else: bot.send_message(uid, state.get('text',''))
             sent += 1
         except: pass
         time.sleep(0.1)
