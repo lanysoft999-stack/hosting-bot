@@ -1,4 +1,4 @@
-import os
+ import os
 import sys
 import time
 import json
@@ -11,7 +11,6 @@ import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# Автоустановка библиотек
 try:
     import telebot
     from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
@@ -26,7 +25,7 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "33.0 NO-DOCKER"
+VERSION = "34.0 FIXED"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
@@ -80,6 +79,16 @@ def init_db():
     conn.commit()
 
 init_db()
+
+# ========== ЗАЩИТА ОТ СПЕЦСИМВОЛОВ ==========
+def escape_md(text):
+    """Экранирует специальные символы Markdown"""
+    if not text:
+        return ""
+    chars = '_*[]()~`>#+-=|{}.!'
+    for char in chars:
+        text = text.replace(char, f'\\{char}')
+    return text
 
 # ========== БЕЗОПАСНОЕ РЕДАКТИРОВАНИЕ ==========
 def safe_edit(chat_id, message_id, text, markup=None):
@@ -315,7 +324,7 @@ def cmd_start(message):
                     try:
                         bot.send_message(ref, 
                             f"🎁 **Новый реферал!**\n\n"
-                            f"👤 @{un or 'user'}\n"
+                            f"👤 @{escape_md(un) if un else 'user'}\n"
                             f"⏱️ +{bonus_minutes} мин премиума\n"
                             f"👥 Рефералов: {ref_count}",
                             parse_mode='Markdown')
@@ -368,7 +377,8 @@ def menu_scripts(message):
     
     for s in scripts[:20]:
         emoji = "🟢" if s['status'] == 'running' else "🔴"
-        markup.add(InlineKeyboardButton(f"{emoji} {s['name'][:20]}", callback_data=f"info_{s['id']}"), 
+        safe_name = escape_md(s['name'][:20])
+        markup.add(InlineKeyboardButton(f"{emoji} {safe_name}", callback_data=f"info_{s['id']}"), 
                    InlineKeyboardButton("🗑", callback_data=f"del_{s['id']}"))
     markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
     
@@ -543,23 +553,38 @@ def menu_all_scripts(message):
     markup = InlineKeyboardMarkup(row_width=1)
     for s in sc:
         o = get_user(s['user_id'])
-        n = o['username'] if o else s['user_id']
-        markup.add(InlineKeyboardButton(f"{'🟢' if s['status']=='running' else '🔴'} {s['name'][:20]} | {n}", callback_data=f"adm_{s['id']}"))
+        n = escape_md(o['username']) if o and o.get('username') else str(s['user_id'])
+        markup.add(InlineKeyboardButton(f"{'🟢' if s['status']=='running' else '🔴'} {escape_md(s['name'][:20])} | {n}", callback_data=f"adm_{s['id']}"))
     markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
     bot.send_message(ADMIN_ID, "🔍 Скрипты:", reply_markup=markup, parse_mode='Markdown')
 
 def show_script_info(chat_id, script, is_admin=False):
     emoji = "🟢" if script['status'] == 'running' else "🔴"
-    info = f"{emoji} **{script['name']}**\n\n🆔 `{script['id']}`\n📁 {format_size(script['size'])}\n📊 {script['status']}"
+    safe_name = escape_md(script['name'])
+    
+    info = f"{emoji} **{safe_name}**\n\n🆔 `{script['id']}`\n📁 {format_size(script['size'])}\n📊 {script['status']}"
+    
     if is_admin:
         o = get_user(script['user_id'])
-        info += f"\n👤 @{o['username']}" if o and o['username'] else f"\n👤 {script['user_id']}"
+        if o and o.get('username'):
+            info += f"\n👤 @{escape_md(o['username'])}"
+        else:
+            info += f"\n👤 `{script['user_id']}`"
+    
     markup = InlineKeyboardMarkup(row_width=2)
-    if script['status'] == 'running': markup.add(InlineKeyboardButton("🛑 Стоп", callback_data=f"stop_{script['id']}"))
-    else: markup.add(InlineKeyboardButton("🚀 Пуск", callback_data=f"start_{script['id']}"))
-    markup.add(InlineKeyboardButton("📜 Логи", callback_data=f"log_{script['id']}"), InlineKeyboardButton("🗑", callback_data=f"del_{script['id']}"))
-    if is_admin: markup.add(InlineKeyboardButton("🔙", callback_data="adm_scr"))
-    bot.send_message(chat_id, info, reply_markup=markup, parse_mode='Markdown')
+    if script['status'] == 'running':
+        markup.add(InlineKeyboardButton("🛑 Стоп", callback_data=f"stop_{script['id']}"))
+    else:
+        markup.add(InlineKeyboardButton("🚀 Пуск", callback_data=f"start_{script['id']}"))
+    markup.add(InlineKeyboardButton("📜 Логи", callback_data=f"log_{script['id']}"), 
+               InlineKeyboardButton("🗑", callback_data=f"del_{script['id']}"))
+    if is_admin:
+        markup.add(InlineKeyboardButton("🔙", callback_data="adm_scr"))
+    
+    try:
+        bot.send_message(chat_id, info, reply_markup=markup, parse_mode='Markdown')
+    except:
+        bot.send_message(chat_id, info.replace('*', '').replace('`', '').replace('_', ''), reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('info_'))
 def info_cb(call):
@@ -696,7 +721,7 @@ def proceed_with_script(uid, sp, fn):
     pid, err = run_script(sid, mp)
     if pid:
         update_script_status(sid, 'running', pid)
-        bot.send_message(uid, f"✅ **Запущен!**\n📄 {fn}\n🆔 `{sid}`", parse_mode='Markdown')
+        bot.send_message(uid, f"✅ **Запущен!**\n📄 {escape_md(fn)}\n🆔 `{sid}`", parse_mode='Markdown')
     else: bot.send_message(uid, f"❌ {err}")
     try:
         if os.path.exists(st['temp_path']): os.remove(st['temp_path'])
@@ -733,10 +758,15 @@ def run_health():
     HTTPServer(('0.0.0.0', PORT), HealthCheck).serve_forever()
 
 if __name__ == '__main__':
-    print(f"🚀 HOSTING v{VERSION} | Python 3")
+    print(f"🚀 HOSTING v{VERSION}")
     print(f"⏱️ Trial: {TRIAL_DAYS} дня")
-    print(f"👥 Рефералы: +5 мин за 2 чел")
-    print(f"💚 Порт: {PORT}")
+    
+    # Очистка старых соединений
+    print("🔄 Очистка старых соединений...")
+    try:
+        bot.remove_webhook()
+    except: pass
+    time.sleep(2)
     
     threading.Thread(target=monitor, daemon=True).start()
     threading.Thread(target=run_health, daemon=True).start()
