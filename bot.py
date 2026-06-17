@@ -25,7 +25,7 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "38.0 FULL-TRANSLATE"
+VERSION = "39.0 FINAL"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
@@ -82,7 +82,6 @@ def init_db():
 
 init_db()
 
-# ========== ПЕРЕВОДЫ ==========
 TEXTS = {
     'ru': {
         'welcome': '🚀 **Hosting Bot v{}**\n\n👤 {}\n📱 Управление скриптами\n💎 Премиум подписка\n👥 Рефералы',
@@ -92,6 +91,7 @@ TEXTS = {
         'premium': '💎 Премиум',
         'profile': '👤 Профиль',
         'referrals': '👥 Рефералы',
+        'language': '🌐 Язык',
         'admin': '👑 Админ',
         'all_scripts': '🔍 Все скрипты',
         'design': '🎨 Оформление',
@@ -133,7 +133,8 @@ TEXTS = {
         'start_btn': '🚀 Пуск',
         'logs': '📜 Логи',
         'delete_media': '🗑 Удалить медиа',
-        'submit_review': 'Отправить',
+        'lang_changed': '✅ Язык изменён на Русский',
+        'lang_select': '🌐 **Выберите язык / Choose language:**',
     },
     'en': {
         'welcome': '🚀 **Hosting Bot v{}**\n\n👤 {}\n📱 Script Management\n💎 Premium\n👥 Referrals',
@@ -143,6 +144,7 @@ TEXTS = {
         'premium': '💎 Premium',
         'profile': '👤 Profile',
         'referrals': '👥 Referrals',
+        'language': '🌐 Language',
         'admin': '👑 Admin',
         'all_scripts': '🔍 All Scripts',
         'design': '🎨 Design',
@@ -184,7 +186,8 @@ TEXTS = {
         'start_btn': '🚀 Start',
         'logs': '📜 Logs',
         'delete_media': '🗑 Delete Media',
-        'submit_review': 'Submit',
+        'lang_changed': '✅ Language changed to English',
+        'lang_select': '🌐 **Выберите язык / Choose language:**',
     }
 }
 
@@ -222,7 +225,6 @@ Terms may change.
 }
 
 def t(key, user_id, *args):
-    """Перевод по ключу"""
     settings = get_user_settings(user_id)
     lang = settings.get('language', 'ru')
     text = TEXTS.get(lang, TEXTS['ru']).get(key, key)
@@ -294,8 +296,10 @@ def get_user_settings(user_id):
     return dict(row)
 
 def set_language(user_id, lang):
-    cursor.execute('INSERT OR REPLACE INTO user_settings (user_id, language, rules_accepted) VALUES (?,?,0)', 
-                   (user_id, lang))
+    old = get_user_settings(user_id)
+    old_rules = old.get('rules_accepted', 0)
+    cursor.execute('INSERT OR REPLACE INTO user_settings (user_id, language, rules_accepted) VALUES (?,?,?)', 
+                   (user_id, lang, old_rules))
     conn.commit()
 
 def accept_rules(user_id):
@@ -431,13 +435,14 @@ upload_states = {}
 admin_media_state = {}
 
 def get_main_menu(user_id=None):
+    uid = user_id or ADMIN_ID
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(KeyboardButton(t('my_scripts', user_id or ADMIN_ID)), KeyboardButton(t('upload', user_id or ADMIN_ID)))
-    markup.add(KeyboardButton(t('premium', user_id or ADMIN_ID)), KeyboardButton(t('profile', user_id or ADMIN_ID)))
-    markup.add(KeyboardButton(t('referrals', user_id or ADMIN_ID)))
+    markup.add(KeyboardButton(t('my_scripts', uid)), KeyboardButton(t('upload', uid)))
+    markup.add(KeyboardButton(t('premium', uid)), KeyboardButton(t('profile', uid)))
+    markup.add(KeyboardButton(t('referrals', uid)), KeyboardButton(t('language', uid)))
     if user_id == ADMIN_ID:
-        markup.add(KeyboardButton(t('admin', user_id)), KeyboardButton(t('all_scripts', user_id)))
-        markup.add(KeyboardButton(t('design', user_id)))
+        markup.add(KeyboardButton(t('admin', uid)), KeyboardButton(t('all_scripts', uid)))
+        markup.add(KeyboardButton(t('design', uid)))
     return markup
 
 # ========== СТАРТ ==========
@@ -489,20 +494,16 @@ def cmd_start(message):
     show_welcome(message)
 
 def show_language_selection(message):
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(
+    bot.send_message(message.chat.id, t('lang_select', message.from_user.id), reply_markup=InlineKeyboardMarkup(row_width=2).add(
         InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_start_ru"),
         InlineKeyboardButton("🇬🇧 English", callback_data="lang_start_en")
-    )
-    bot.send_message(message.chat.id, "🌐 **Выберите язык / Choose language:**", reply_markup=markup, parse_mode='Markdown')
+    ), parse_mode='Markdown')
 
 def show_rules(user_id):
     settings = get_user_settings(user_id)
     lang = settings.get('language', 'ru')
-    
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton(t('rules_btn', user_id), callback_data="accept_rules"))
-    
     try:
         bot.send_message(user_id, RULES_TEXT.get(lang, RULES_TEXT['ru']), reply_markup=markup, parse_mode='Markdown')
     except:
@@ -511,14 +512,12 @@ def show_rules(user_id):
 def show_welcome(message):
     user_id = message.chat.id if hasattr(message, 'chat') else message.from_user.id
     days = get_days_left(user_id)
-    
     if user_id == ADMIN_ID: st = "👑 Admin"
     elif is_premium(user_id): st = f"💎 Premium: {days}d"
     elif days > 0: st = f"🆓 Trial: {days}d"
     else: st = "🆓 Free"
     
     text = t('welcome', user_id, VERSION, st)
-    
     if not try_send_media(user_id, 'welcome', text):
         bot.send_message(user_id, text, reply_markup=get_main_menu(user_id), parse_mode='Markdown')
     else:
@@ -535,19 +534,45 @@ def choose_start_language(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == "accept_rules")
 def accept_rules_handler(call):
-    user_id = call.from_user.id
-    accept_rules(user_id)
+    accept_rules(call.from_user.id)
     bot.answer_callback_query(call.id, "✅")
     try: bot.delete_message(call.message.chat.id, call.message.message_id)
     except: pass
     show_welcome(call.message)
+
+# ========== СМЕНА ЯЗЫКА ==========
+@bot.message_handler(commands=['language', 'lang'])
+def cmd_language(message):
+    user_id = message.from_user.id
+    settings = get_user_settings(user_id)
+    current = settings.get('language', 'ru')
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton(f"{'✅ ' if current == 'ru' else ''}🇷🇺 Русский", callback_data="change_lang_ru"),
+        InlineKeyboardButton(f"{'✅ ' if current == 'en' else ''}🇬🇧 English", callback_data="change_lang_en")
+    )
+    bot.send_message(user_id, t('lang_select', user_id), reply_markup=markup, parse_mode='Markdown')
+
+@bot.message_handler(func=lambda m: m.text in [TEXTS['ru']['language'], TEXTS['en']['language']])
+def menu_lang_button(message):
+    cmd_language(message)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('change_lang_'))
+def change_language(call):
+    lang = call.data[12:]
+    user_id = call.from_user.id
+    set_language(user_id, lang)
+    bot.answer_callback_query(call.id, t('lang_changed', user_id))
+    try: bot.delete_message(call.message.chat.id, call.message.message_id)
+    except: pass
+    bot.send_message(user_id, t('main_menu', user_id), reply_markup=get_main_menu(user_id))
 
 # ========== ПРОФИЛЬ ==========
 @bot.message_handler(func=lambda m: m.text in [TEXTS['ru']['profile'], TEXTS['en']['profile']])
 def menu_profile(message):
     user_id = message.from_user.id
     days = get_days_left(user_id)
-    if is_premium(user_id): st = f"💎 Premium: {days} {t('premium', user_id)}"
+    if is_premium(user_id): st = f"💎 Premium: {days}d"
     elif days > 0: st = f"🆓 Trial: {days}d"
     else: st = "🆓 Free"
     scripts = count_user_scripts(user_id)
@@ -941,7 +966,7 @@ if __name__ == '__main__':
     print(f"🚀 HOSTING v{VERSION}")
     try: bot.remove_webhook()
     except: pass
-    time.sleep(2)
+    time.sleep(3)
     
     threading.Thread(target=monitor, daemon=True).start()
     threading.Thread(target=run_health, daemon=True).start()
