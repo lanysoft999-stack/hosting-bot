@@ -25,7 +25,7 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "41.0 FINAL"
+VERSION = "42.0 ULTIMATE"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAEP1PO_NRJsGAuqWauXjf6il2mgcb2KkvM")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
@@ -76,6 +76,10 @@ def init_db():
         caption TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS user_settings (
         user_id INTEGER PRIMARY KEY, language TEXT DEFAULT 'ru', rules_accepted INTEGER DEFAULT 0)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS broadcast_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, text TEXT, 
+        media_file_id TEXT, media_type TEXT, sent_count INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     for code in ['PREMIUM2024', 'ADMIN', 'MEGA', 'CRYPTO']:
         cursor.execute("INSERT OR IGNORE INTO promocodes VALUES (?, 999, 0)", (code,))
     conn.commit()
@@ -89,22 +93,23 @@ T = {
         'premium': '💎 Премиум', 'profile': '👤 Профиль', 'referrals': '👥 Рефералы', 'language': '🌐 Язык',
         'admin': '👑 Админ', 'all_scripts': '🔍 Все скрипты', 'design': '🎨 Оформление',
         'back': '🔙 Назад', 'no_scripts': '📭 Нет скриптов. Отправьте .py файл!',
-        'scripts_list': '📋 **Скрипты:**', 'upload_prompt': '📤 Отправьте .py файл или ZIP архив!',
+        'upload_prompt': '📤 Отправьте .py файл или ZIP архив!',
         'premium_active': '💎 **Премиум: {} дн**', 'choose_currency': '💰 **Выберите валюту:**',
         'promo': '🔑 Промокод', 'promo_prompt': '🔑 Отправьте промокод:', 'promo_ok': '✅ Премиум на 30 дней!',
-        'invoice': '💰 **Счёт:** {} {}\n📅 {}', 'paid': '✅ **Оплачено! Премиум на {} дн!** 🎉',
-        'payment_error': '❌ Ошибка создания счёта', 'waiting': '⏳ Ожидание...', 'not_paid': '❌ Не оплачено',
-        'limit_error': '❌ Лимит!', 'size_error': '❌ Макс {} МБ!',
+        'paid': '✅ **Оплачено! Премиум на {} дн!** 🎉', 'limit_error': '❌ Лимит!', 'size_error': '❌ Макс {} МБ!',
         'script_started': '✅ **Запущен!**\n📄 {}\n🆔 `{}`', 'log_empty': '📜 Пусто', 'log_none': '📜 Нет',
         'deleted': '🗑 Удалён', 'no_access': '❌',
-        'admin_text': '👑 **Админ**\n📁 Скриптов: {}\n🟢 Запущено: {}',
+        'admin_text': '👑 **Админ-панель**\n📁 Скриптов: {}\n🟢 Запущено: {}',
         'give_premium': '💎 Выдать премиум', 'admin_prompt': '📝 ID и дни:',
-        'media_saved': '✅ Медиа сохранено для **{}**!', 'media_deleted': '✅ Медиа удалено для **{}**',
+        'broadcast': '📢 Рассылка', 'broadcast_prompt': '📢 Отправьте текст для рассылки (можно с фото/видео):',
+        'broadcast_sent': '✅ Рассылка отправлена! Получили: {} пользователей',
+        'broadcast_error': '❌ Ошибка рассылки',
         'ref_text': '👥 **Рефералы**\n\n🔗 `https://t.me/{}?start=ref{}`\n👤 Рефералов: {}\n🎁 +5 мин за каждых 2 приглашённых!',
         'profile_text': '👤 **Профиль**\n\n🆔 `{}`\n📊 {}\n📁 Скриптов: {}/{}\n👥 Рефералов: {}',
-        'ref_bonus': '🎁 **Новый реферал!**\n\n👤 @{}\n⏱️ +{} мин премиума\n👥 Рефералов: {}',
         'rules_btn': '✅ Ознакомлен', 'pay': '💳 Оплатить', 'check': '🔄 Проверить',
         'stop': '🛑 Стоп', 'start_btn': '🚀 Пуск', 'logs': '📜 Логи',
+        'replace_file': '📝 Заменить файл', 'replace_prompt': '📝 Отправьте новый .py файл для замены:',
+        'file_replaced': '✅ Файл {} заменён!',
         'lang_changed': '✅ Язык изменён на Русский', 'lang_select': '🌐 **Выберите язык:**',
     },
     'en': {
@@ -113,22 +118,23 @@ T = {
         'premium': '💎 Premium', 'profile': '👤 Profile', 'referrals': '👥 Referrals', 'language': '🌐 Language',
         'admin': '👑 Admin', 'all_scripts': '🔍 All Scripts', 'design': '🎨 Design',
         'back': '🔙 Back', 'no_scripts': '📭 No scripts. Send .py file!',
-        'scripts_list': '📋 **Scripts:**', 'upload_prompt': '📤 Send .py file or ZIP!',
+        'upload_prompt': '📤 Send .py file or ZIP!',
         'premium_active': '💎 **Premium: {} days**', 'choose_currency': '💰 **Choose currency:**',
         'promo': '🔑 Promo', 'promo_prompt': '🔑 Enter promo code:', 'promo_ok': '✅ Premium 30 days!',
-        'invoice': '💰 **Invoice:** {} {}\n📅 {}', 'paid': '✅ **Paid! Premium {} days!** 🎉',
-        'payment_error': '❌ Error creating invoice', 'waiting': '⏳ Waiting...', 'not_paid': '❌ Not paid',
-        'limit_error': '❌ Limit!', 'size_error': '❌ Max {} MB!',
+        'paid': '✅ **Paid! Premium {} days!** 🎉', 'limit_error': '❌ Limit!', 'size_error': '❌ Max {} MB!',
         'script_started': '✅ **Started!**\n📄 {}\n🆔 `{}`', 'log_empty': '📜 Empty', 'log_none': '📜 None',
         'deleted': '🗑 Deleted', 'no_access': '❌',
-        'admin_text': '👑 **Admin**\n📁 Scripts: {}\n🟢 Running: {}',
+        'admin_text': '👑 **Admin Panel**\n📁 Scripts: {}\n🟢 Running: {}',
         'give_premium': '💎 Give Premium', 'admin_prompt': '📝 ID and days:',
-        'media_saved': '✅ Media saved for **{}**!', 'media_deleted': '✅ Media deleted for **{}**',
+        'broadcast': '📢 Broadcast', 'broadcast_prompt': '📢 Send text for broadcast (can attach photo/video):',
+        'broadcast_sent': '✅ Broadcast sent! Received: {} users',
+        'broadcast_error': '❌ Broadcast error',
         'ref_text': '👥 **Referrals**\n\n🔗 `https://t.me/{}?start=ref{}`\n👤 Referrals: {}\n🎁 +5 min per 2 invited!',
         'profile_text': '👤 **Profile**\n\n🆔 `{}`\n📊 {}\n📁 Scripts: {}/{}\n👥 Referrals: {}',
-        'ref_bonus': '🎁 **New referral!**\n\n👤 @{}\n⏱️ +{} min premium\n👥 Referrals: {}',
         'rules_btn': '✅ I Agree', 'pay': '💳 Pay', 'check': '🔄 Check',
         'stop': '🛑 Stop', 'start_btn': '🚀 Start', 'logs': '📜 Logs',
+        'replace_file': '📝 Replace File', 'replace_prompt': '📝 Send new .py file to replace:',
+        'file_replaced': '✅ File {} replaced!',
         'lang_changed': '✅ Language changed to English', 'lang_select': '🌐 **Choose language:**',
     }
 }
@@ -252,6 +258,14 @@ def add_script(script_id, user_id, name, path, size, main_file=None):
     cursor.execute('INSERT INTO scripts (id, user_id, name, path, size, main_file) VALUES (?,?,?,?,?,?)', (script_id, user_id, name, path, size, main_file))
     conn.commit()
 
+def update_script_file(script_id, new_path, new_size, new_name=None):
+    """Обновляет файл скрипта"""
+    if new_name:
+        cursor.execute('UPDATE scripts SET path = ?, size = ?, name = ? WHERE id = ?', (new_path, new_size, new_name, script_id))
+    else:
+        cursor.execute('UPDATE scripts SET path = ?, size = ? WHERE id = ?', (new_path, new_size, script_id))
+    conn.commit()
+
 def update_script_status(script_id, status, pid=None):
     if pid: cursor.execute('UPDATE scripts SET status = ?, pid = ? WHERE id = ?', (status, pid, script_id))
     else: cursor.execute('UPDATE scripts SET status = ? WHERE id = ?', (status, script_id))
@@ -268,6 +282,10 @@ def get_all_running_scripts():
 def get_referral_count(user_id):
     cursor.execute('SELECT COUNT(*) as cnt FROM users WHERE referrer_id = ?', (user_id,))
     return cursor.fetchone()['cnt']
+
+def get_all_users():
+    cursor.execute('SELECT user_id FROM users')
+    return [row['user_id'] for row in cursor.fetchall()]
 
 def find_py_files(folder):
     py_files = []
@@ -332,6 +350,8 @@ def check_crypto_payment(payment_id):
 bot = telebot.TeleBot(TOKEN)
 upload_states = {}
 admin_media_state = {}
+replace_states = {}  # Для замены файлов
+broadcast_state = {}  # Для рассылки
 
 def get_main_menu(user_id=None):
     uid = user_id or ADMIN_ID
@@ -340,10 +360,10 @@ def get_main_menu(user_id=None):
     markup.add(KeyboardButton(t('premium', uid)), KeyboardButton(t('profile', uid)))
     markup.add(KeyboardButton(t('referrals', uid)), KeyboardButton(t('language', uid)))
     if user_id == ADMIN_ID:
-        markup.add(KeyboardButton(t('admin', uid)), KeyboardButton(t('all_scripts', uid)))
-        markup.add(KeyboardButton(t('design', uid)))
+        markup.add(KeyboardButton(t('admin', uid)))
     return markup
 
+# ========== СТАРТ ==========
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
     user_id = message.from_user.id
@@ -434,6 +454,7 @@ def change_language(call):
     except: pass
     bot.send_message(call.from_user.id, t('main_menu', call.from_user.id), reply_markup=get_main_menu(call.from_user.id))
 
+# ========== ПРОФИЛЬ ==========
 @bot.message_handler(func=lambda m: m.text in [T['ru']['profile'], T['en']['profile']])
 def menu_profile(message):
     user_id = message.from_user.id
@@ -444,6 +465,7 @@ def menu_profile(message):
     markup.add(InlineKeyboardButton(t('back', user_id), callback_data="back_main"))
     if not try_send_media(user_id, 'profile', text, markup): bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
 
+# ========== СКРИПТЫ ==========
 @bot.message_handler(func=lambda m: m.text in [T['ru']['my_scripts'], T['en']['my_scripts']])
 def menu_scripts(message):
     user_id = message.chat.id
@@ -451,62 +473,238 @@ def menu_scripts(message):
     markup = InlineKeyboardMarkup(row_width=2)
     if not scripts:
         markup.add(InlineKeyboardButton(t('back', user_id), callback_data="back_main"))
-        if not try_send_media(user_id, 'scripts', t('no_scripts', user_id), markup): bot.send_message(user_id, t('no_scripts', user_id), reply_markup=markup, parse_mode='Markdown')
+        bot.send_message(user_id, t('no_scripts', user_id), reply_markup=markup, parse_mode='Markdown')
         return
     for s in scripts[:20]:
         emoji = "🟢" if s['status'] == 'running' else "🔴"
-        markup.add(InlineKeyboardButton(f"{emoji} {escape_md(s['name'][:20])}", callback_data=f"info_{s['id']}"), InlineKeyboardButton("🗑", callback_data=f"del_{s['id']}"))
+        markup.add(InlineKeyboardButton(f"{emoji} {escape_md(s['name'][:20])}", callback_data=f"info_{s['id']}"),
+                   InlineKeyboardButton("🗑", callback_data=f"del_{s['id']}"))
+    markup.add(InlineKeyboardButton(t('replace_file', user_id), callback_data="replace_menu"))
     markup.add(InlineKeyboardButton(t('back', user_id), callback_data="back_main"))
-    if not try_send_media(user_id, 'scripts', t('scripts_list', user_id), markup): bot.send_message(user_id, t('scripts_list', user_id), reply_markup=markup, parse_mode='Markdown')
+    bot.send_message(user_id, "📋 **Скрипты:**", reply_markup=markup, parse_mode='Markdown')
 
-@bot.message_handler(func=lambda m: m.text in [T['ru']['upload'], T['en']['upload']])
-def menu_upload(message):
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(t('back', message.chat.id), callback_data="back_main"))
-    bot.send_message(message.chat.id, t('upload_prompt', message.chat.id), reply_markup=markup)
-
-@bot.message_handler(func=lambda m: m.text in [T['ru']['premium'], T['en']['premium']])
-def menu_premium(message):
-    user_id = message.from_user.id
-    if is_premium(user_id):
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton(t('back', user_id), callback_data="back_main"))
-        if not try_send_media(user_id, 'premium', t('premium_active', user_id, get_days_left(user_id)), markup): bot.send_message(user_id, t('premium_active', user_id, get_days_left(user_id)), reply_markup=markup, parse_mode='Markdown')
+# ========== ЗАМЕНА ФАЙЛА ==========
+@bot.callback_query_handler(func=lambda call: call.data == "replace_menu")
+def replace_menu(call):
+    user_id = call.from_user.id
+    scripts = get_user_scripts(user_id)
+    if not scripts:
+        bot.answer_callback_query(call.id, "Нет скриптов")
         return
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(InlineKeyboardButton("💵 USDT", callback_data="m_usdt"), InlineKeyboardButton("💎 TON", callback_data="m_ton"))
-    markup.add(InlineKeyboardButton(t('promo', user_id), callback_data="promo"))
+    
+    markup = InlineKeyboardMarkup(row_width=1)
+    for s in scripts[:20]:
+        markup.add(InlineKeyboardButton(f"📝 {escape_md(s['name'][:30])}", callback_data=f"replace_{s['id']}"))
     markup.add(InlineKeyboardButton(t('back', user_id), callback_data="back_main"))
-    if not try_send_media(user_id, 'premium', t('choose_currency', user_id), markup): bot.send_message(user_id, t('choose_currency', user_id), reply_markup=markup, parse_mode='Markdown')
+    
+    safe_edit(call.message.chat.id, call.message.message_id, t('replace_prompt', user_id), markup)
+    bot.answer_callback_query(call.id)
 
-@bot.message_handler(func=lambda m: m.text in [T['ru']['referrals'], T['en']['referrals']])
-def menu_ref(message):
+@bot.callback_query_handler(func=lambda call: call.data.startswith('replace_'))
+def replace_file_prompt(call):
+    script_id = call.data[8:]
+    script = get_script(script_id)
+    if not script:
+        bot.answer_callback_query(call.id, "❌ Не найден")
+        return
+    
+    replace_states[call.from_user.id] = script_id
+    bot.answer_callback_query(call.id)
+    bot.send_message(call.message.chat.id, f"📝 Отправьте новый .py файл для замены **{escape_md(script['name'])}**\n\n/cancel_replace — отмена", parse_mode='Markdown')
+
+@bot.message_handler(commands=['cancel_replace'])
+def cancel_replace(message):
+    if message.from_user.id in replace_states:
+        del replace_states[message.from_user.id]
+        bot.reply_to(message, "✅ Замена отменена")
+    else:
+        bot.reply_to(message, "Нет активной замены")
+
+# ========== ЗАГРУЗКА (ОБРАБОТКА ЗАМЕНЫ) ==========
+@bot.message_handler(content_types=['document'])
+def handle_doc(message):
     uid = message.from_user.id
-    cnt = get_referral_count(uid)
-    un = bot.get_me().username
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(t('back', uid), callback_data="back_main"))
-    if not try_send_media(uid, 'referral', t('ref_text', uid, un, uid, cnt), markup): bot.send_message(uid, t('ref_text', uid, un, uid, cnt), reply_markup=markup, parse_mode='Markdown')
+    
+    # Проверяем — это замена файла или новый скрипт
+    if uid in replace_states:
+        handle_file_replace(message)
+        return
+    
+    # Обычная загрузка нового скрипта
+    if not get_user(uid): create_user(uid, message.from_user.username)
+    if not check_user_limits(uid): bot.reply_to(message, t('limit_error', uid)); return
+    fi = bot.get_file(message.document.file_id)
+    fn, fs = message.document.file_name, message.document.file_size
+    mx = PREMIUM_MAX_SIZE_MB if is_premium(uid) else FREE_MAX_SIZE_MB
+    if fs > mx*1024*1024: bot.reply_to(message, t('size_error', uid, mx)); return
+    td = os.path.join(TEMP_DIR, str(uid))
+    os.makedirs(td, exist_ok=True)
+    tp = os.path.join(td, fn)
+    msg = bot.reply_to(message, "⏳")
+    try:
+        dl = bot.download_file(fi.file_path)
+        with open(tp, 'wb') as f: f.write(dl)
+    except: bot.edit_message_text("❌", uid, msg.message_id); return
+    sid = str(uuid.uuid4())[:8]
+    upload_states[uid] = {'script_id': sid, 'temp_path': tp, 'file_name': fn, 'file_size': fs, 'msg_id': msg.message_id}
+    if fn.lower().endswith('.zip'):
+        et = os.path.join(TEMP_DIR, str(uid), sid)
+        os.makedirs(et, exist_ok=True)
+        try:
+            with zipfile.ZipFile(tp) as zf: zf.extractall(et)
+        except: bot.edit_message_text("❌ ZIP", uid, msg.message_id); return
+        py = find_py_files(et)
+        if not py: bot.edit_message_text("❌ .py", uid, msg.message_id); return
+        upload_states[uid].update({'step': 'select', 'extract_to': et, 'py_files': py})
+        markup = InlineKeyboardMarkup(row_width=1)
+        for pf in py[:10]: markup.add(InlineKeyboardButton(os.path.relpath(pf, et), callback_data=f"sel_{os.path.relpath(pf, et)}"))
+        bot.edit_message_text("📁:", uid, msg.message_id, reply_markup=markup)
+    else:
+        proceed_with_script(uid, tp, fn)
+        bot.edit_message_text(f"✅ {fn}", uid, msg.message_id)
 
+def handle_file_replace(message):
+    """Обрабатывает замену файла скрипта"""
+    uid = message.from_user.id
+    script_id = replace_states.pop(uid)
+    script = get_script(script_id)
+    
+    if not script:
+        bot.reply_to(message, "❌ Скрипт не найден")
+        return
+    
+    fi = bot.get_file(message.document.file_id)
+    fn, fs = message.document.file_name, message.document.file_size
+    
+    # Проверяем расширение
+    if not fn.endswith('.py'):
+        bot.reply_to(message, "❌ Только .py файлы!")
+        return
+    
+    mx = PREMIUM_MAX_SIZE_MB if is_premium(uid) else FREE_MAX_SIZE_MB
+    if fs > mx*1024*1024:
+        bot.reply_to(message, t('size_error', uid, mx))
+        return
+    
+    msg = bot.reply_to(message, "⏳ Заменяю...")
+    
+    try:
+        dl = bot.download_file(fi.file_path)
+        
+        # Сохраняем новый файл
+        new_path = os.path.join(script['path'], fn)
+        with open(new_path, 'wb') as f: f.write(dl)
+        
+        # Обновляем в базе
+        update_script_file(script_id, new_path, fs, fn)
+        
+        # Если скрипт запущен — перезапускаем
+        if script['status'] == 'running' and script.get('pid'):
+            stop_script(script['pid'])
+            pid, _ = run_script(script_id, new_path)
+            if pid: update_script_status(script_id, 'running', pid)
+        
+        bot.edit_message_text(t('file_replaced', uid, fn), uid, msg.message_id)
+    except Exception as e:
+        bot.edit_message_text(f"❌ Ошибка: {str(e)[:200]}", uid, msg.message_id)
+
+# ========== РАССЫЛКА ==========
+@bot.message_handler(commands=['broadcast'])
+def cmd_broadcast(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.reply_to(message, "❌ Только админ")
+        return
+    
+    broadcast_state[message.from_user.id] = {'step': 'text'}
+    bot.reply_to(message, t('broadcast_prompt', ADMIN_ID))
+
+@bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID and m.from_user.id in broadcast_state)
+def handle_broadcast(message):
+    state = broadcast_state[message.from_user.id]
+    
+    if state['step'] == 'text':
+        # Сохраняем текст
+        state['text'] = message.text or message.caption or ''
+        
+        # Проверяем есть ли медиа
+        if message.content_type == 'photo':
+            state['media_file_id'] = message.photo[-1].file_id
+            state['media_type'] = 'photo'
+        elif message.content_type == 'video':
+            state['media_file_id'] = message.video.file_id
+            state['media_type'] = 'video'
+        elif message.content_type == 'animation':
+            state['media_file_id'] = message.animation.file_id
+            state['media_type'] = 'animation'
+        
+        # Отправляем рассылку
+        send_broadcast(state)
+        del broadcast_state[message.from_user.id]
+
+def send_broadcast(state):
+    """Отправляет рассылку всем пользователям"""
+    users = get_all_users()
+    sent = 0
+    
+    for user_id in users:
+        try:
+            if state.get('media_file_id'):
+                if state['media_type'] == 'photo':
+                    bot.send_photo(user_id, state['media_file_id'], caption=state.get('text', ''), parse_mode='Markdown')
+                elif state['media_type'] == 'video':
+                    bot.send_video(user_id, state['media_file_id'], caption=state.get('text', ''), parse_mode='Markdown')
+                elif state['media_type'] == 'animation':
+                    bot.send_animation(user_id, state['media_file_id'], caption=state.get('text', ''), parse_mode='Markdown')
+            else:
+                bot.send_message(user_id, state.get('text', ''), parse_mode='Markdown')
+            sent += 1
+        except:
+            pass
+        time.sleep(0.1)  # Защита от флуда
+    
+    # Сохраняем в историю
+    cursor.execute("INSERT INTO broadcast_history (admin_id, text, media_file_id, media_type, sent_count) VALUES (?,?,?,?,?)",
+                   (ADMIN_ID, state.get('text', ''), state.get('media_file_id'), state.get('media_type'), sent))
+    conn.commit()
+    
+    bot.send_message(ADMIN_ID, t('broadcast_sent', ADMIN_ID, sent))
+
+# ========== АДМИН-ПАНЕЛЬ ==========
 @bot.message_handler(func=lambda m: m.text in [T['ru']['admin'], T['en']['admin']] and m.from_user.id == ADMIN_ID)
 def menu_admin(message):
     sc = get_all_scripts()
     rn = len([s for s in sc if s['status'] == 'running'])
+    users_count = len(get_all_users())
+    
     markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(InlineKeyboardButton(t('all_scripts', ADMIN_ID), callback_data="adm_scr"))
-    markup.add(InlineKeyboardButton(t('give_premium', ADMIN_ID), callback_data="adm_prem"))
-    markup.add(InlineKeyboardButton(t('design', ADMIN_ID), callback_data="adm_media"))
-    markup.add(InlineKeyboardButton(t('back', ADMIN_ID), callback_data="back_main"))
-    bot.send_message(ADMIN_ID, t('admin_text', ADMIN_ID, len(sc), rn), reply_markup=markup, parse_mode='Markdown')
+    markup.add(InlineKeyboardButton("🔍 Все скрипты", callback_data="adm_scr"))
+    markup.add(InlineKeyboardButton("💎 Выдать премиум", callback_data="adm_prem"))
+    markup.add(InlineKeyboardButton("📢 Рассылка", callback_data="adm_broadcast"))
+    markup.add(InlineKeyboardButton("🎨 Оформление", callback_data="adm_media"))
+    markup.add(InlineKeyboardButton("📊 Статистика", callback_data="adm_stats"))
+    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="back_main"))
+    
+    text = f"👑 **Админ-панель**\n\n📁 Скриптов: {len(sc)}\n🟢 Запущено: {rn}\n👥 Пользователей: {users_count}"
+    bot.send_message(ADMIN_ID, text, reply_markup=markup, parse_mode='Markdown')
 
-@bot.message_handler(func=lambda m: m.text in [T['ru']['design'], T['en']['design']] and m.from_user.id == ADMIN_ID)
-def menu_media(message):
-    markup = InlineKeyboardMarkup(row_width=1)
-    for s in ['welcome', 'profile', 'scripts', 'premium', 'referral']:
-        markup.add(InlineKeyboardButton(s.capitalize(), callback_data=f"media_{s}"))
-    markup.add(InlineKeyboardButton(t('back', ADMIN_ID), callback_data="back_main"))
-    bot.send_message(ADMIN_ID, "🎨 Разделы:", reply_markup=markup, parse_mode='Markdown')
+@bot.callback_query_handler(func=lambda call: call.data == "adm_broadcast")
+def adm_broadcast_cb(call):
+    bot.answer_callback_query(call.id)
+    broadcast_state[call.from_user.id] = {'step': 'text'}
+    bot.send_message(ADMIN_ID, t('broadcast_prompt', ADMIN_ID))
 
+@bot.callback_query_handler(func=lambda call: call.data == "adm_stats")
+def adm_stats_cb(call):
+    bot.answer_callback_query(call.id)
+    users = get_all_users()
+    scripts = get_all_scripts()
+    running = len([s for s in scripts if s['status'] == 'running'])
+    premium_users = len([u for u in users if is_premium(u)])
+    
+    text = f"📊 **Статистика**\n\n👥 Пользователей: {len(users)}\n💎 Премиум: {premium_users}\n📁 Скриптов: {len(scripts)}\n🟢 Запущено: {running}\n💾 Размер БД: {format_size(os.path.getsize(DATABASE_PATH))}"
+    bot.send_message(ADMIN_ID, text, parse_mode='Markdown')
+
+# ========== ОСТАЛЬНЫЕ CALLBACKS ==========
 @bot.callback_query_handler(func=lambda call: call.data == "back_main")
 def back_main(call):
     bot.answer_callback_query(call.id)
@@ -539,7 +737,7 @@ def create_invoice(call):
         if url: markup.add(InlineKeyboardButton(t('pay', uid), url=url))
         markup.add(InlineKeyboardButton(t('check', uid), callback_data=f"check_{inv['invoice_id']}_{p['days']}"))
         markup.add(InlineKeyboardButton(t('back', uid), callback_data="back_prem"))
-        bot.send_message(uid, t('invoice', uid, p[cur], cur.upper(), p['name']), reply_markup=markup, parse_mode='Markdown')
+        bot.send_message(uid, f"💰 **Счёт:** {p[cur]} {cur.upper()}\n📅 {p['name']}", reply_markup=markup, parse_mode='Markdown')
     else: bot.send_message(uid, t('payment_error', uid))
     bot.answer_callback_query(call.id)
 
@@ -562,7 +760,39 @@ def enter_promo(call):
     bot.register_next_step_handler(msg, lambda m: activate_premium(m.from_user.id, 30) or bot.reply_to(m, t('promo_ok', m.from_user.id)))
     bot.answer_callback_query(call.id)
 
-# АДМИН СКРИПТЫ (порядок важен!)
+# ========== ПРЕМИУМ ==========
+@bot.message_handler(func=lambda m: m.text in [T['ru']['premium'], T['en']['premium']])
+def menu_premium(message):
+    user_id = message.from_user.id
+    if is_premium(user_id):
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton(t('back', user_id), callback_data="back_main"))
+        bot.send_message(user_id, t('premium_active', user_id, get_days_left(user_id)), reply_markup=markup, parse_mode='Markdown')
+        return
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(InlineKeyboardButton("💵 USDT", callback_data="m_usdt"), InlineKeyboardButton("💎 TON", callback_data="m_ton"))
+    markup.add(InlineKeyboardButton(t('promo', user_id), callback_data="promo"))
+    markup.add(InlineKeyboardButton(t('back', user_id), callback_data="back_main"))
+    bot.send_message(user_id, t('choose_currency', user_id), reply_markup=markup, parse_mode='Markdown')
+
+# ========== РЕФЕРАЛЫ ==========
+@bot.message_handler(func=lambda m: m.text in [T['ru']['referrals'], T['en']['referrals']])
+def menu_ref(message):
+    uid = message.from_user.id
+    cnt = get_referral_count(uid)
+    un = bot.get_me().username
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(t('back', uid), callback_data="back_main"))
+    bot.send_message(uid, t('ref_text', uid, un, uid, cnt), reply_markup=markup, parse_mode='Markdown')
+
+# ========== ЗАГРУЗКА ==========
+@bot.message_handler(func=lambda m: m.text in [T['ru']['upload'], T['en']['upload']])
+def menu_upload(message):
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton(t('back', message.chat.id), callback_data="back_main"))
+    bot.send_message(message.chat.id, t('upload_prompt', message.chat.id), reply_markup=markup)
+
+# ========== АДМИН СКРИПТЫ ==========
 @bot.callback_query_handler(func=lambda call: call.data == "adm_scr")
 def adm_scr_cb(call): bot.answer_callback_query(call.id); menu_all_scripts(call.message)
 
@@ -577,7 +807,7 @@ def adm_media_cb(call): bot.answer_callback_query(call.id); menu_media(call.mess
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('adm_'))
 def adm_cb(call):
-    if call.data in ['adm_scr', 'adm_prem', 'adm_media']: return
+    if call.data in ['adm_scr', 'adm_prem', 'adm_media', 'adm_broadcast', 'adm_stats']: return
     s = get_script(call.data[4:])
     if s and call.from_user.id == ADMIN_ID:
         bot.answer_callback_query(call.id)
@@ -607,6 +837,7 @@ def show_script_info(chat_id, script, is_admin=False):
     if script['status'] == 'running': markup.add(InlineKeyboardButton(t('stop', uid), callback_data=f"stop_{script['id']}"))
     else: markup.add(InlineKeyboardButton(t('start_btn', uid), callback_data=f"start_{script['id']}"))
     markup.add(InlineKeyboardButton(t('logs', uid), callback_data=f"log_{script['id']}"), InlineKeyboardButton("🗑", callback_data=f"del_{script['id']}"))
+    markup.add(InlineKeyboardButton(t('replace_file', uid), callback_data=f"replace_{script['id']}"))
     if is_admin: markup.add(InlineKeyboardButton("🔙", callback_data="adm_scr"))
     try: bot.send_message(chat_id, info, reply_markup=markup, parse_mode='Markdown')
     except: bot.send_message(chat_id, info.replace('*','').replace('`','').replace('_',''), reply_markup=markup)
@@ -658,6 +889,15 @@ def del_cb(call):
         try: bot.edit_message_text(t('deleted', call.from_user.id), call.message.chat.id, call.message.message_id)
         except: pass
 
+# ========== МЕДИА ==========
+@bot.message_handler(func=lambda m: m.text in [T['ru']['design'], T['en']['design']] and m.from_user.id == ADMIN_ID)
+def menu_media(message):
+    markup = InlineKeyboardMarkup(row_width=1)
+    for s in ['welcome', 'profile', 'scripts', 'premium', 'referral']:
+        markup.add(InlineKeyboardButton(s.capitalize(), callback_data=f"media_{s}"))
+    markup.add(InlineKeyboardButton(t('back', ADMIN_ID), callback_data="back_main"))
+    bot.send_message(ADMIN_ID, "🎨 Разделы:", reply_markup=markup, parse_mode='Markdown')
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith('media_'))
 def media_section(call):
     if call.from_user.id != ADMIN_ID: return bot.answer_callback_query(call.id, "❌")
@@ -689,41 +929,7 @@ def handle_admin_media(message):
     save_media(section, fid, ftype, message.caption or '')
     bot.reply_to(message, t('media_saved', ADMIN_ID, section))
 
-@bot.message_handler(content_types=['document'])
-def handle_doc(message):
-    uid = message.from_user.id
-    if not get_user(uid): create_user(uid, message.from_user.username)
-    if not check_user_limits(uid): bot.reply_to(message, t('limit_error', uid)); return
-    fi = bot.get_file(message.document.file_id)
-    fn, fs = message.document.file_name, message.document.file_size
-    mx = PREMIUM_MAX_SIZE_MB if is_premium(uid) else FREE_MAX_SIZE_MB
-    if fs > mx*1024*1024: bot.reply_to(message, t('size_error', uid, mx)); return
-    td = os.path.join(TEMP_DIR, str(uid))
-    os.makedirs(td, exist_ok=True)
-    tp = os.path.join(td, fn)
-    msg = bot.reply_to(message, "⏳")
-    try:
-        dl = bot.download_file(fi.file_path)
-        with open(tp, 'wb') as f: f.write(dl)
-    except: bot.edit_message_text("❌", uid, msg.message_id); return
-    sid = str(uuid.uuid4())[:8]
-    upload_states[uid] = {'script_id': sid, 'temp_path': tp, 'file_name': fn, 'file_size': fs, 'msg_id': msg.message_id}
-    if fn.lower().endswith('.zip'):
-        et = os.path.join(TEMP_DIR, str(uid), sid)
-        os.makedirs(et, exist_ok=True)
-        try:
-            with zipfile.ZipFile(tp) as zf: zf.extractall(et)
-        except: bot.edit_message_text("❌ ZIP", uid, msg.message_id); return
-        py = find_py_files(et)
-        if not py: bot.edit_message_text("❌ .py", uid, msg.message_id); return
-        upload_states[uid].update({'step': 'select', 'extract_to': et, 'py_files': py})
-        markup = InlineKeyboardMarkup(row_width=1)
-        for pf in py[:10]: markup.add(InlineKeyboardButton(os.path.relpath(pf, et), callback_data=f"sel_{os.path.relpath(pf, et)}"))
-        bot.edit_message_text("📁:", uid, msg.message_id, reply_markup=markup)
-    else:
-        proceed_with_script(uid, tp, fn)
-        bot.edit_message_text(f"✅ {fn}", uid, msg.message_id)
-
+# ========== PROCEED SCRIPT ==========
 @bot.callback_query_handler(func=lambda call: call.data.startswith('sel_'))
 def sel_cb(call):
     uid = call.from_user.id
