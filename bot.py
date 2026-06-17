@@ -26,7 +26,7 @@ except ImportError:
     import requests
 
 VERSION = "45.0 NEW-TOKEN"
-TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAGszxCQC51K7UNOdhtK08HJMk-iGVT49tw")
+TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAGHqh5Jz8TMySccXitAVyD5Ud1qsUbZC_4")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
 PORT = int(os.getenv("PORT", "10000"))
