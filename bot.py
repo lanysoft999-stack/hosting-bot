@@ -25,7 +25,7 @@ except ImportError:
     os.system(f'{sys.executable} -m pip install requests --break-system-packages')
     import requests
 
-VERSION = "44.0 FIXED"
+VERSION = "45.0 NEW-TOKEN"
 TOKEN = os.getenv("BOT_TOKEN", "8964647336:AAGszxCQC51K7UNOdhtK08HJMk-iGVT49tw")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "314148464"))
 CRYPTO_TOKEN = os.getenv("CRYPTO_TOKEN", "593773:AAcVRGB0bizw5hLjy0on5QmQcr6X4lHmyYX")
@@ -410,7 +410,6 @@ def get_main_menu(user_id=None):
         markup.add(KeyboardButton(t('admin', uid)))
     return markup
 
-# ========== СТАРТ ==========
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
     user_id = message.from_user.id
@@ -501,7 +500,6 @@ def change_language(call):
     except: pass
     bot.send_message(call.from_user.id, t('main_menu', call.from_user.id), reply_markup=get_main_menu(call.from_user.id))
 
-# ========== ПРОФИЛЬ ==========
 @bot.message_handler(func=lambda m: m.text in [T['ru']['profile'], T['en']['profile']])
 def menu_profile(message):
     user_id = message.from_user.id
@@ -528,7 +526,6 @@ def menu_profile(message):
     
     bot.send_message(user_id, text, reply_markup=markup, parse_mode='Markdown')
 
-# ========== ПОДАРИТЬ ТАРИФ ==========
 @bot.callback_query_handler(func=lambda call: call.data == "gift_tariff")
 def gift_tariff_start(call):
     user_id = call.from_user.id
@@ -632,9 +629,7 @@ def cancel_gift_cmd(message):
     if message.from_user.id in gift_state:
         del gift_state[message.from_user.id]
         bot.reply_to(message, "✅ Отменено")
-    else: bot.reply_to(message, "Нет активного подарка")
 
-# ========== СКРИПТЫ ==========
 @bot.message_handler(func=lambda m: m.text in [T['ru']['my_scripts'], T['en']['my_scripts']])
 def menu_scripts(message):
     user_id = message.chat.id
@@ -757,7 +752,6 @@ def handle_file_replace(message):
     except Exception as e:
         bot.edit_message_text(f"❌ {str(e)[:200]}", uid, msg.message_id)
 
-# ========== ПРЕМИУМ ==========
 @bot.message_handler(func=lambda m: m.text in [T['ru']['premium'], T['en']['premium']])
 def menu_premium(message):
     user_id = message.from_user.id
@@ -772,7 +766,6 @@ def menu_premium(message):
     markup.add(InlineKeyboardButton(t('back', user_id), callback_data="back_main"))
     bot.send_message(user_id, t('choose_currency', user_id), reply_markup=markup, parse_mode='Markdown')
 
-# ========== РЕФЕРАЛЫ ==========
 @bot.message_handler(func=lambda m: m.text in [T['ru']['referrals'], T['en']['referrals']])
 def menu_ref(message):
     uid = message.from_user.id
@@ -782,14 +775,12 @@ def menu_ref(message):
     markup.add(InlineKeyboardButton(t('back', uid), callback_data="back_main"))
     bot.send_message(uid, t('ref_text', uid, un, uid, cnt), reply_markup=markup, parse_mode='Markdown')
 
-# ========== ЗАГРУЗКА ==========
 @bot.message_handler(func=lambda m: m.text in [T['ru']['upload'], T['en']['upload']])
 def menu_upload(message):
     markup = InlineKeyboardMarkup()
     markup.add(InlineKeyboardButton(t('back', message.chat.id), callback_data="back_main"))
     bot.send_message(message.chat.id, t('upload_prompt', message.chat.id), reply_markup=markup)
 
-# ========== АДМИН ==========
 @bot.message_handler(func=lambda m: m.text in [T['ru']['admin'], T['en']['admin']] and m.from_user.id == ADMIN_ID)
 def menu_admin(message):
     sc = get_all_scripts()
@@ -826,7 +817,6 @@ def handle_broadcast(message):
     elif message.content_type == 'video': state['media_file_id'], state['media_type'] = message.video.file_id, 'video'
     elif message.content_type == 'animation': state['media_file_id'], state['media_type'] = message.animation.file_id, 'animation'
     
-    # Отправляем ВСЕМ пользователям
     users = get_all_users()
     sent = 0
     for uid in users:
@@ -846,7 +836,6 @@ def handle_broadcast(message):
     bot.send_message(ADMIN_ID, t('broadcast_sent', ADMIN_ID, sent))
     del broadcast_state[message.from_user.id]
 
-# ========== CALLBACKS ==========
 @bot.callback_query_handler(func=lambda call: call.data == "back_main")
 def back_main(call):
     bot.answer_callback_query(call.id)
@@ -902,7 +891,6 @@ def enter_promo(call):
     bot.register_next_step_handler(msg, lambda m: activate_premium(m.from_user.id, 30) or bot.reply_to(m, t('promo_ok', m.from_user.id)))
     bot.answer_callback_query(call.id)
 
-# ========== АДМИН СКРИПТЫ ==========
 @bot.callback_query_handler(func=lambda call: call.data == "adm_scr")
 def adm_scr_cb(call): bot.answer_callback_query(call.id); menu_all_scripts(call.message)
 
@@ -998,7 +986,6 @@ def del_cb(call):
         try: bot.edit_message_text(t('deleted', call.from_user.id), call.message.chat.id, call.message.message_id)
         except: pass
 
-# ========== МЕДИА ==========
 @bot.message_handler(func=lambda m: m.text in [T['ru']['design'], T['en']['design']] and m.from_user.id == ADMIN_ID)
 def menu_media(message):
     markup = InlineKeyboardMarkup(row_width=1)
@@ -1038,7 +1025,6 @@ def handle_admin_media(message):
     save_media(section, fid, ftype, message.caption or '')
     bot.reply_to(message, f"✅ Медиа сохранено для **{section}**!")
 
-# ========== PROCEED SCRIPT ==========
 @bot.callback_query_handler(func=lambda call: call.data.startswith('sel_'))
 def sel_cb(call):
     uid = call.from_user.id
@@ -1118,4 +1104,4 @@ if __name__ == '__main__':
             bot.infinity_polling(timeout=10, long_polling_timeout=5)
         except Exception as e:
             print(f"❌ {e}")
-            time.sleep(10)
+            time.sleep(10),
