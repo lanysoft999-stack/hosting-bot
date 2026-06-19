@@ -1,4 +1,4 @@
-# bot.py - Хостинг бот (ПОЛНАЯ ВЕРСИЯ - ВСЁ РАБОТАЕТ)
+# bot.py - Хостинг бот (Исправлено для Python 3.14)
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
@@ -18,7 +18,7 @@ from aiohttp import web
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ.get("BOT_TOKEN", "8964647336:AAEoMHcCKOeMU37VasxqbWItyFIFUg4mGFQ")
-VERSION = "43.0.0"
+VERSION = "44.0.0"
 ADMIN_IDS = [314148464]
 SUPPORT_URL = "https://t.me/hesers"
 FREE_TRIAL_DAYS = 3
@@ -242,14 +242,20 @@ def kill_process(pid):
     try: os.kill(int(pid), signal.SIGTERM); return True
     except: return False
 
-# ========== ВЕБ-СЕРВЕР ==========
-def run_web_server():
-    async def health(request):
-        return web.json_response({'status': 'ok'})
+# ========== ВЕБ-СЕРВЕР (ЗАПУСК В ГЛАВНОМ ПОТОКЕ) ==========
+async def health_check(request):
+    return web.json_response({'status': 'ok'})
+
+async def run_web_server():
     app = web.Application()
-    app.router.add_get('/', health)
-    app.router.add_get('/ping', health)
-    web.run_app(app, host='0.0.0.0', port=PORT)
+    app.router.add_get('/', health_check)
+    app.router.add_get('/ping', health_check)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
+    print(f"🌐 Web server on port {PORT}")
 
 # ========== БОТ ==========
 bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
@@ -594,7 +600,7 @@ def handle_photo(message):
         except: pass
     bot.send_message(uid, "✅ Скриншот отправлен!")
 
-# ========== CALLBACKS (ВСЕ С ОТВЕТОМ) ==========
+# ========== CALLBACKS ==========
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     uid = call.from_user.id
@@ -805,6 +811,17 @@ def callback_handler(call):
 # ========== ЗАПУСК ==========
 if __name__ == '__main__':
     init_db()
-    threading.Thread(target=run_web_server, daemon=True).start()
-    print(f"🚀 Hosting Bot v{VERSION} | Port: {PORT}")
-    bot.infinity_polling()
+    
+    # Запускаем веб-сервер через asyncio в главном потоке
+    import asyncio
+    
+    async def main():
+        await run_web_server()
+        print(f"🚀 Hosting Bot v{VERSION} | Port: {PORT}")
+        # Запускаем бота в отдельном потоке
+        threading.Thread(target=bot.infinity_polling, daemon=True).start()
+        # Держим главный поток
+        while True:
+            await asyncio.sleep(3600)
+    
+    asyncio.run(main())
