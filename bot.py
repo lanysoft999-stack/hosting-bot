@@ -1,24 +1,24 @@
-# bot.py - Хостинг бот (Старый запуск + Новые функции)
+# bot.py - Хостинг бот (Исправленная версия для Render)
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 import sqlite3
 import os
+import sys
 import uuid
 import shutil
 import zipfile
 import subprocess
 import signal
 import threading
-import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from aiohttp import web
 
 # ========== НАСТРОЙКИ ==========
-TOKEN = os.environ.get("BOT_TOKEN", "8964647336:AAHs5cGpAuSGaXbDBeG-lmS6z0fgXIEM2rs")
-VERSION = "39.0.0"
+TOKEN = os.environ.get("BOT_TOKEN", "8964647336:AAGHqh5Jz8TMySccXitAVyD5Ud1qsUbZC_4")
+VERSION = "40.0.0"
 ADMIN_IDS = [314148464]
 SUPPORT_URL = "https://t.me/hesers"
 FREE_TRIAL_DAYS = 3
@@ -36,20 +36,6 @@ LOCK_FILE = BASE_DIR / "bot.lock"
 
 for d in [SCRIPTS_DIR, TEMP_DIR, FILES_DIR, LOGS_DIR]:
     d.mkdir(exist_ok=True)
-
-# ========== ПРОВЕРКА ЭКЗЕМПЛЯРА ==========
-def check_single_instance():
-    if LOCK_FILE.exists():
-        try:
-            with open(LOCK_FILE) as f:
-                old_pid = int(f.read().strip())
-            os.kill(old_pid, 0)
-            return False
-        except:
-            LOCK_FILE.unlink()
-    with open(LOCK_FILE, 'w') as f:
-        f.write(str(os.getpid()))
-    return True
 
 # ========== ТАРИФЫ ==========
 TIER_INFO = {
@@ -231,66 +217,34 @@ def create_promo(code, ptype, days, max_uses):
                     (code, ptype, days, max_uses))
         conn.commit()
 
-# ========== ЗАПУСК СКРИПТА (СТАРЫЙ РАБОЧИЙ МЕТОД) ==========
+# ========== ЗАПУСК СКРИПТА ==========
 def run_script(path):
-    """Запускает Python скрипт - старый проверенный метод"""
+    """Запускает Python скрипт"""
     py_files = list(Path(path).rglob("*.py"))
     if not py_files:
         return None
     
-    # Выбираем main.py или первый попавшийся
     main_file = py_files[0]
     for f in py_files:
         if f.name == 'main.py':
             main_file = f
             break
-        elif f.name == 'bot.py':
-            main_file = f
-            break
     
     try:
-        # Старый метод запуска через Popen с CREATE_NEW_PROCESS_GROUP
-        if sys.platform == 'win32':
-            proc = subprocess.Popen(
-                ['python', str(main_file)],
-                cwd=str(path),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-            )
-        else:
-            proc = subprocess.Popen(
-                ['python3', str(main_file)],
-                cwd=str(path),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True
-            )
-        
-        print(f"[PID:{proc.pid}] Started: {main_file}")
+        proc = subprocess.Popen(
+            [sys.executable, str(main_file)],
+            cwd=str(path),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
         return proc.pid
-    except Exception as e:
-        print(f"Error running script: {e}")
-        # Пробуем с python вместо python3
-        try:
-            proc = subprocess.Popen(
-                ['python', str(main_file)],
-                cwd=str(path),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True
-            )
-            return proc.pid
-        except Exception as e2:
-            print(f"Error running script (retry): {e2}")
-            return None
+    except:
+        return None
 
 def kill_process(pid):
     try:
-        if sys.platform == 'win32':
-            os.kill(int(pid), signal.SIGTERM)
-        else:
-            os.kill(int(pid), signal.SIGTERM)
+        os.kill(int(pid), signal.SIGTERM)
         return True
     except:
         return False
@@ -306,9 +260,12 @@ def run_web_server():
     web.run_app(app, host='0.0.0.0', port=PORT)
 
 # ========== БОТ ==========
+# Важно: удаляем вебхук перед запуском
 bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
-bot_active = True
+bot.remove_webhook()
+time.sleep(1)  # Ждем завершения предыдущих соединений
 
+bot_active = True
 upload_waiting = set()
 broadcast_waiting = set()
 promo_creating = {}
@@ -401,11 +358,9 @@ def handle_document(message):
     
     status_msg = bot.send_message(uid, "📥 Скачивание...")
     
-    # Скачиваем файл
     file_info = bot.get_file(doc.file_id)
     downloaded = bot.download_file(file_info.file_path)
     
-    # Временная папка
     tmp_dir = TEMP_DIR / str(uid) / uuid.uuid4().hex[:8]
     tmp_dir.mkdir(parents=True, exist_ok=True)
     tmp_file = tmp_dir / fn
@@ -413,10 +368,7 @@ def handle_document(message):
     with open(tmp_file, 'wb') as f:
         f.write(downloaded)
     
-    # Сохраняем оригинал
     original_path = save_user_file(uid, fn, downloaded)
-    
-    bot.edit_message_text("📦 Обработка...", uid, status_msg.message_id)
     
     sid = uuid.uuid4().hex[:8]
     script_dir = SCRIPTS_DIR / str(uid) / sid
@@ -433,7 +385,6 @@ def handle_document(message):
         
         bot.edit_message_text("⚡ Запуск...", uid, status_msg.message_id)
         
-        # ЗАПУСК СКРИПТА (СТАРЫЙ МЕТОД)
         pid = run_script(str(script_dir))
         
         if pid:
@@ -632,7 +583,7 @@ def admin_all_hosts(message):
         )
     bot.send_message(message.chat.id, text, reply_markup=kb)
 
-# ========== ОБРАБОТКА ТЕКСТА ==========
+# ========== ТЕКСТ ==========
 @bot.message_handler(content_types=['text'])
 def handle_text(message):
     uid = message.from_user.id
@@ -665,46 +616,13 @@ def handle_text(message):
                 uses = int(text)
                 data = promo_creating.pop(uid)
                 create_promo(data['code'], 'pro', data['days'], uses)
-                bot.send_message(uid, f"✅ Промокод <b>{data['code']}</b>\n📅 {data['days']}дн | 👥 {uses}")
+                bot.send_message(uid, f"✅ Промокод <b>{data['code']}</b> создан!")
             except:
                 bot.send_message(uid, "❌ Число!")
         return
     
     if uid in admin_waiting:
         action = admin_waiting.pop(uid)
-        
-        if isinstance(action, tuple) and action[0] == 'balance':
-            target_uid = action[1]
-            try:
-                amount = float(text)
-                with get_db() as conn:
-                    conn.execute('UPDATE users SET balance=balance+? WHERE user_id=?', (amount, target_uid))
-                user = get_user(target_uid)
-                bot.send_message(uid, f"✅ Баланс user{target_uid}: {user.get('balance',0):.0f}₽")
-            except:
-                bot.send_message(uid, "❌ Неверная сумма")
-            return
-        
-        if action == 'search':
-            try:
-                target_uid = int(text)
-                user = get_user(target_uid)
-                if not user: return bot.send_message(uid, "❌ Не найден")
-                scripts = get_user_scripts(target_uid)
-                running = len([s for s in scripts if s['status']=='running'])
-                
-                kb = InlineKeyboardMarkup()
-                kb.add(InlineKeyboardButton("📦 Хосты", callback_data=f"auser_hosts:{target_uid}"),
-                       InlineKeyboardButton("📥 Скачать", callback_data=f"auser_dl:{target_uid}"))
-                kb.add(InlineKeyboardButton("🎁 Выдать", callback_data=f"auser_give:{target_uid}"),
-                       InlineKeyboardButton("❌ Отозвать", callback_data=f"auser_remove:{target_uid}"))
-                kb.add(InlineKeyboardButton("🚫 Забанить", callback_data=f"auser_ban:{target_uid}"))
-                
-                bot.send_message(uid, f"👤 user{target_uid}\n📦 {len(scripts)} (🟢{running})", reply_markup=kb)
-            except:
-                bot.send_message(uid, "❌ Неверный ID")
-            return
-        
         try:
             target_uid = int(text)
         except:
@@ -868,14 +786,14 @@ def callback_handler(call):
 
 # ========== ЗАПУСК ==========
 if __name__ == '__main__':
-    if not check_single_instance():
-        print("Already running!")
-        sys.exit(1)
-    
     init_db()
     threading.Thread(target=run_web_server, daemon=True).start()
     
-    print(f"🚀 Hosting Bot v{VERSION} | Старый запуск + Новые функции")
+    print(f"🚀 Hosting Bot v{VERSION}")
     print(f"🌐 Port: {PORT}")
+    print(f"🤖 Token: {TOKEN[:10]}...")
     
+    # Удаляем вебхук и запускаем поллинг
+    bot.remove_webhook()
+    time.sleep(2)
     bot.infinity_polling()
