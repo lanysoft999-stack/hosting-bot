@@ -1,4 +1,4 @@
-# bot.py - Хостинг бот на aiogram 3.x (Полная версия с управлением подписками)
+# bot.py - Хостинг бот на aiogram 3.x (Render-ready версия)
 import asyncio
 import logging
 import sys
@@ -28,22 +28,20 @@ from aiogram.types import (
     BotCommand, Message, CallbackQuery, FSInputFile
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
-import requests as req
 
 # ========== ЛОГГИРОВАНИЕ ==========
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('bot.log', encoding='utf-8'),
-        logging.StreamHandler()
+        logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger('hosting_bot')
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ.get("BOT_TOKEN", "8964647336:AAHs5cGpAuSGaXbDBeG-lmS6z0fgXIEM2rs")
-VERSION = "26.0.0"
+VERSION = "27.0.0"
 ADMIN_IDS = [314148464]
 SUPPORT_URL = "https://t.me/hesers"
 
@@ -369,21 +367,46 @@ class AdminFilter(Filter):
 # ========== КЛАВИАТУРЫ ==========
 def user_keyboard():
     builder = ReplyKeyboardBuilder()
-    builder.add(KeyboardButton(text="📤 Загрузить файл"), KeyboardButton(text="💻 Мои хосты"))
-    builder.add(KeyboardButton(text="🛒 Магазин"), KeyboardButton(text="💳 Пополнить"))
-    builder.add(KeyboardButton(text="👤 Профиль"), KeyboardButton(text="🆘 Поддержка"))
-    builder.adjust(2)
+    builder.row(
+        KeyboardButton(text="📤 Загрузить файл"),
+        KeyboardButton(text="💻 Мои хосты")
+    )
+    builder.row(
+        KeyboardButton(text="🛒 Магазин"),
+        KeyboardButton(text="💳 Пополнить")
+    )
+    builder.row(
+        KeyboardButton(text="👤 Профиль"),
+        KeyboardButton(text="🆘 Поддержка")
+    )
     return builder.as_markup(resize_keyboard=True)
 
 def admin_keyboard():
     builder = ReplyKeyboardBuilder()
-    builder.add(KeyboardButton(text="📤 Загрузить файл"), KeyboardButton(text="💻 Мои хосты"))
-    builder.add(KeyboardButton(text="📊 Статистика"), KeyboardButton(text="👥 Пользователи"))
-    builder.add(KeyboardButton(text="📦 Хосты"), KeyboardButton(text="🎫 Промокоды"))
-    builder.add(KeyboardButton(text="🎁 Выдать подписку"), KeyboardButton(text="❌ Отозвать подписку"))
-    builder.add(KeyboardButton(text="🛑 Стоп бот"), KeyboardButton(text="🟢 Старт бот"))
-    builder.add(KeyboardButton(text="👤 Режим юзера"), KeyboardButton(text="🆘 Поддержка"))
-    builder.adjust(2)
+    builder.row(
+        KeyboardButton(text="📤 Загрузить файл"),
+        KeyboardButton(text="💻 Мои хосты")
+    )
+    builder.row(
+        KeyboardButton(text="📊 Статистика"),
+        KeyboardButton(text="👥 Пользователи")
+    )
+    builder.row(
+        KeyboardButton(text="📦 Хосты"),
+        KeyboardButton(text="🎫 Промокоды")
+    )
+    builder.row(
+        KeyboardButton(text="🎁 Выдать подписку"),
+        KeyboardButton(text="❌ Отозвать подписку")
+    )
+    builder.row(
+        KeyboardButton(text="🛑 Стоп бот"),
+        KeyboardButton(text="🟢 Старт бот")
+    )
+    builder.row(
+        KeyboardButton(text="👤 Режим юзера"),
+        KeyboardButton(text="🆘 Поддержка")
+    )
     return builder.as_markup(resize_keyboard=True)
 
 def support_keyboard():
@@ -402,8 +425,8 @@ async def block_direct_documents(message: Message, state: FSMContext):
         return
     
     await message.answer(
-        "❌ <b>Загрузка файлов только через кнопку!</b>\n\n"
-        "📤 Нажмите <b>«Загрузить файл»</b> в меню.",
+        "❌ Загрузка файлов только через кнопку!\n\n"
+        "📤 Нажмите «Загрузить файл» в меню.",
         reply_markup=user_keyboard() if uid not in ADMIN_IDS else admin_keyboard()
     )
 
@@ -415,10 +438,10 @@ async def cmd_start(message: Message, state: FSMContext):
     if not get_user(uid): 
         create_user(uid, message.from_user.username)
         await message.answer(
-            f"🎉 <b>Добро пожаловать!</b>\n\n"
+            f"🎉 Добро пожаловать!\n\n"
             f"🆓 Активирован бесплатный тариф на {FREE_TRIAL_DAYS} дня!\n"
-            f"├ 📦 Скриптов: {FREE_MAX_SCRIPTS}\n"
-            f"└ 📊 Размер файла: {FREE_MAX_SIZE_MB} МБ\n\n"
+            f"📦 Скриптов: {FREE_MAX_SCRIPTS}\n"
+            f"📊 Размер файла: {FREE_MAX_SIZE_MB} МБ\n\n"
             f"💎 После окончания пробного периода приобретите премиум!"
         )
     
@@ -430,7 +453,7 @@ async def cmd_start(message: Message, state: FSMContext):
         u = get_all_users()
         premium_users = len([x for x in u if x.get('is_premium', 0) == 1])
         await message.answer(
-            f"👑 <b>АДМИН-ПАНЕЛЬ</b>\n\n"
+            f"👑 АДМИН-ПАНЕЛЬ\n\n"
             f"👥 Пользователей: {len(u)} (💎{premium_users})\n"
             f"📦 Хостов: {len(s)} (🟢{r})\n"
             f"🆓 Бесплатный тариф: {FREE_TRIAL_DAYS} дня\n\n"
@@ -447,7 +470,7 @@ async def cmd_start(message: Message, state: FSMContext):
         kb.adjust(1)
         
         await message.answer(
-            f"❌ <b>ДОСТУП ЗАБЛОКИРОВАН</b>\n\n"
+            f"❌ ДОСТУП ЗАБЛОКИРОВАН\n\n"
             f"🆓 Бесплатный тариф истек!\n"
             f"💎 Приобретите премиум для продолжения.\n\n"
             f"👇 Выберите действие:",
@@ -464,30 +487,636 @@ async def cmd_start(message: Message, state: FSMContext):
     limits = get_user_limits(uid)
     
     await message.answer(
-        f"🚀 <b>HOSTING BOT v{VERSION}</b>\n\n"
-        f"📊 <b>Статистика:</b>\n"
+        f"🚀 HOSTING BOT v{VERSION}\n\n"
+        f"📊 Статистика:\n"
         f"├ 📋 Тариф: {sub_info}\n"
         f"├ 📦 Хостов: {len(scripts)}/{limits[0]}\n"
         f"├ 🟢 Запущено: {running}\n"
         f"├ 🔴 Остановлено: {stopped}\n"
         f"└ 📈 Аптайм: {uptime}%\n\n"
-        f"👇 <b>Действие:</b>",
+        f"👇 Действие:",
         reply_markup=user_keyboard()
     )
 
 @dp.message(Command('admin'), AdminFilter())
 async def cmd_admin(message: Message):
     admin_mode[message.from_user.id] = True
-    await message.answer("👑 <b>Админ-панель активирована!</b>", reply_markup=admin_keyboard())
+    await message.answer("👑 Админ-панель активирована!", reply_markup=admin_keyboard())
+
+@dp.callback_query(F.data == "shop_configurator")
+async def shop_configurator(callback: CallbackQuery):
+    await shop_menu(callback.message)
+    await callback.answer()
+
+# ========== ЗАГРУЗКА ФАЙЛОВ ==========
+@dp.message(F.text == "📤 Загрузить файл", BotActiveFilter())
+async def btn_upload(message: Message, state: FSMContext):
+    uid = message.from_user.id
+    
+    if not check_subscription(uid):
+        await message.answer(
+            f"❌ ДОСТУП ЗАКРЫТ!\n\n"
+            f"🆓 Бесплатный тариф на {FREE_TRIAL_DAYS} дня истек.\n"
+            f"💎 Купите премиум для продолжения!"
+        )
+        return
+    
+    mx_scripts, mx_size = get_user_limits(uid)
+    current_scripts = count_user_scripts(uid)
+    
+    if current_scripts >= mx_scripts:
+        await message.answer(
+            f"❌ Лимит хостов!\n\n"
+            f"├ Максимум: {mx_scripts}\n"
+            f"└ Сейчас: {current_scripts}\n\n"
+            f"💎 Купите премиум для увеличения лимита"
+        )
+        return
+    
+    await state.set_state(UploadStates.waiting_file)
+    await message.answer(
+        f"📤 ЗАГРУЗКА ФАЙЛА\n\n"
+        f"├ 📄 Поддерживаются: .py, .zip\n"
+        f"├ 📦 Макс. размер: {mx_size} МБ\n"
+        f"├ 📊 Лимит: {current_scripts}/{mx_scripts}\n"
+        f"├ 📚 Автоустановка из requirements.txt\n"
+        f"└ ❌ /cancel для отмены\n\n"
+        f"👇 Отправьте файл:"
+    )
+
+@dp.message(UploadStates.waiting_file, F.document, BotActiveFilter())
+async def handle_upload(message: Message, state: FSMContext):
+    uid = message.from_user.id
+    
+    if not check_subscription(uid):
+        await message.answer("❌ Доступ закрыт!")
+        await state.clear()
+        return
+    
+    doc = message.document
+    fn = doc.file_name
+    fs = doc.file_size
+    
+    _, mx_size = get_user_limits(uid)
+    
+    if not fn.endswith(('.py', '.zip')):
+        await message.answer("❌ Только .py или .zip файлы!")
+        return
+    
+    if fs > mx_size * 1024 * 1024:
+        await message.answer(f"❌ Максимальный размер: {mx_size} МБ")
+        return
+    
+    td = TEMP_DIR / str(uid)
+    td.mkdir(exist_ok=True)
+    tp = td / fn
+    
+    status_msg = await message.answer("📥 Загрузка файла...")
+    await bot.download(doc, destination=tp)
+    
+    file_data = tp.read_bytes()
+    original_file_path = save_user_file(uid, fn, file_data)
+    
+    await status_msg.edit_text("📦 Обработка файла...")
+    
+    sid = str(uuid.uuid4())[:8]
+    
+    if fn.endswith('.zip'):
+        et = td / sid
+        et.mkdir(exist_ok=True)
+        
+        try:
+            with zipfile.ZipFile(tp) as z:
+                z.extractall(et)
+        except Exception as e:
+            await status_msg.edit_text(f"❌ Ошибка архива: {e}")
+            return
+        
+        py_files = list(et.rglob("*.py"))
+        if not py_files:
+            await status_msg.edit_text("❌ В архиве нет .py файлов!")
+            return
+        
+        ud = SCRIPTS_DIR / str(uid) / sid
+        ud.mkdir(parents=True, exist_ok=True)
+        
+        for item in et.iterdir():
+            s = et / item
+            dest = ud / item
+            if s.is_dir():
+                shutil.copytree(str(s), str(dest), dirs_exist_ok=True)
+            else:
+                shutil.copy2(str(s), str(dest))
+        
+        total_size = sum(f.stat().st_size for f in ud.rglob('*') if f.is_file())
+        
+        await status_msg.edit_text("📚 Проверка зависимостей...")
+        
+        cid, err = await run_script_async(sid, str(ud))
+        
+        if err:
+            await status_msg.edit_text(f"❌ Ошибка запуска:\n{err}")
+            shutil.rmtree(str(ud), ignore_errors=True)
+            return
+        
+        add_script(sid, uid, fn, str(ud), total_size, original_file_path)
+        update_script_status(sid, 'running', cid)
+        
+        kb = InlineKeyboardBuilder()
+        kb.button(text="📥 Скачать файл", callback_data=f"download_file:{sid}")
+        kb.button(text="💻 Мои хосты", callback_data="my_hosts")
+        kb.adjust(1)
+        
+        await status_msg.edit_text(
+            f"✅ ХОСТ ЗАПУЩЕН!\n\n"
+            f"├ 📄 Файл: {fn}\n"
+            f"├ 🆔 ID: {sid}\n"
+            f"├ 📦 Размер: {total_size / (1024*1024):.1f} МБ\n"
+            f"└ ⚡ Статус: 🟢 Запущен",
+            reply_markup=kb.as_markup()
+        )
+        
+        shutil.rmtree(str(td), ignore_errors=True)
+    else:
+        ud = SCRIPTS_DIR / str(uid) / sid
+        ud.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(tp), str(ud / fn))
+        
+        await status_msg.edit_text("📚 Проверка зависимостей...")
+        
+        cid, err = await run_script_async(sid, str(ud))
+        
+        if err:
+            await status_msg.edit_text(f"❌ Ошибка запуска:\n{err}")
+            return
+        
+        add_script(sid, uid, fn, str(ud), fs, original_file_path)
+        update_script_status(sid, 'running', cid)
+        
+        kb = InlineKeyboardBuilder()
+        kb.button(text="📥 Скачать файл", callback_data=f"download_file:{sid}")
+        kb.button(text="💻 Мои хосты", callback_data="my_hosts")
+        kb.adjust(1)
+        
+        await status_msg.edit_text(
+            f"✅ ХОСТ ЗАПУЩЕН!\n\n"
+            f"├ 📄 Файл: {fn}\n"
+            f"├ 🆔 ID: {sid}\n"
+            f"├ 📦 Размер: {fs / (1024*1024):.1f} МБ\n"
+            f"└ ⚡ Статус: 🟢 Запущен",
+            reply_markup=kb.as_markup()
+        )
+    
+    await state.clear()
+
+@dp.message(UploadStates.waiting_file)
+async def invalid_upload(message: Message, state: FSMContext):
+    if message.text and message.text == '/cancel':
+        await state.clear()
+        await message.answer("❌ Загрузка отменена", reply_markup=user_keyboard())
+        return
+    
+    await message.answer("❌ Отправьте файл (.py или .zip)!")
+
+# ========== СКАЧИВАНИЕ ФАЙЛОВ ==========
+@dp.callback_query(F.data.startswith("download_file:"))
+async def download_file(callback: CallbackQuery):
+    script_id = callback.data.split(":")[1]
+    uid = callback.from_user.id
+    
+    script = get_script(script_id)
+    if not script:
+        await callback.answer("❌ Хост не найден!")
+        return
+    
+    if script['user_id'] != uid and uid not in ADMIN_IDS:
+        await callback.answer("❌ Нет доступа!")
+        return
+    
+    original_file = script.get('original_file')
+    
+    if original_file and os.path.exists(original_file):
+        await callback.message.answer_document(
+            FSInputFile(original_file),
+            caption=f"📄 {script['name']}\n🆔 {script_id}"
+        )
+        await callback.answer("✅ Файл отправлен!")
+    else:
+        script_path = Path(script['path'])
+        if script_path.exists():
+            zip_path = TEMP_DIR / f"{script_id}.zip"
+            with zipfile.ZipFile(zip_path, 'w') as zf:
+                for file in script_path.rglob('*'):
+                    if file.is_file():
+                        zf.write(file, file.relative_to(script_path))
+            
+            await callback.message.answer_document(
+                FSInputFile(zip_path),
+                caption=f"📦 {script['name']}\n🆔 {script_id}\n(архив файлов)"
+            )
+            
+            zip_path.unlink()
+            await callback.answer("✅ Архив отправлен!")
+        else:
+            await callback.answer("❌ Файлы не найдены!")
+
+# ========== ХОСТЫ ==========
+@dp.message(F.text == "💻 Мои хосты", BotActiveFilter())
+async def btn_hosts(message: Message):
+    uid = message.from_user.id
+    
+    if not check_subscription(uid):
+        await message.answer("❌ Доступ закрыт!")
+        return
+    
+    scripts = get_user_scripts(uid)
+    
+    if not scripts:
+        kb = InlineKeyboardBuilder()
+        kb.button(text="📤 Загрузить файл", callback_data="upload_file")
+        kb.adjust(1)
+        await message.answer("😔 Нет хостов\n\nЗагрузите ваш первый скрипт!", reply_markup=kb.as_markup())
+        return
+    
+    text = f"💻 МОИ ХОСТЫ ({len(scripts)})\n\n"
+    kb = InlineKeyboardBuilder()
+    
+    for i, s in enumerate(scripts, 1):
+        st = "🟢" if s['status'] == 'running' else "🔴"
+        status_text = "запущен" if s['status'] == 'running' else "остановлен"
+        sz = s['size'] / (1024 * 1024) if s['size'] else 0
+        text += f"{i}. {st} {s['name']}\n   └ {sz:.1f}МБ | {status_text} | {s['id']}\n"
+        
+        if s['status'] == 'running':
+            kb.button(text=f"⏹ Стоп", callback_data=f"sc:stop:{s['id']}")
+        else:
+            kb.button(text=f"▶️ Старт", callback_data=f"sc:start:{s['id']}")
+        kb.button(text=f"📥 Скачать", callback_data=f"download_file:{s['id']}")
+        kb.button(text=f"🗑 Удалить", callback_data=f"sc:del:{s['id']}")
+    
+    kb.button(text="📤 Загрузить ещё", callback_data="upload_file")
+    kb.adjust(3, 1)
+    
+    await message.answer(text, reply_markup=kb.as_markup())
+
+@dp.callback_query(F.data == "upload_file")
+async def upload_file_callback(callback: CallbackQuery, state: FSMContext):
+    await btn_upload(callback.message, state)
+    await callback.answer()
+
+@dp.callback_query(F.data == "my_hosts")
+async def my_hosts_callback(callback: CallbackQuery):
+    await btn_hosts(callback.message)
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("sc:"), BotActiveFilter())
+async def script_action(callback: CallbackQuery):
+    try:
+        _, action, sid = callback.data.split(":")
+        uid = callback.from_user.id
+        s = get_script(sid)
+        
+        if not s or (s['user_id'] != uid and uid not in ADMIN_IDS):
+            await callback.answer("❌ Нет доступа!")
+            return
+        
+        if action == "stop":
+            if s['status'] == 'running':
+                if s.get('container_id'): 
+                    kill_process(s['container_id'])
+                update_script_status(sid, 'stopped')
+                await callback.answer("✅ Остановлен!")
+            else: 
+                await callback.answer("Уже остановлен")
+        
+        elif action == "start":
+            if not check_subscription(uid):
+                await callback.answer("❌ Доступ закрыт!")
+                return
+            if not bot_active and uid not in ADMIN_IDS:
+                await callback.answer("❌ Бот остановлен!")
+                return
+            if s['status'] == 'stopped':
+                if not os.path.exists(s['path']): 
+                    await callback.answer("❌ Папка не найдена!")
+                    return
+                
+                await callback.answer("🔄 Запуск...")
+                
+                cid, err = await run_script_async(sid, s['path'])
+                if cid: 
+                    update_script_status(sid, 'running', cid)
+                    await callback.answer("✅ Запущен!")
+                else: 
+                    await callback.answer(f"❌ {err}")
+            else: 
+                await callback.answer("Уже запущен")
+        
+        elif action == "del":
+            kb = InlineKeyboardBuilder()
+            kb.button(text="✅ Да, удалить", callback_data=f"sc:confirm_del:{sid}")
+            kb.button(text="❌ Отмена", callback_data="my_hosts")
+            kb.adjust(2)
+            
+            await callback.message.edit_text(
+                f"⚠️ Удалить хост?\n\n"
+                f"📄 {s['name']}\n"
+                f"🆔 {sid}\n\n"
+                f"Это действие необратимо!",
+                reply_markup=kb.as_markup()
+            )
+            await callback.answer()
+            return
+        
+        elif action == "confirm_del":
+            if s.get('container_id'): 
+                kill_process(s['container_id'])
+            
+            original_file = s.get('original_file')
+            if original_file and os.path.exists(original_file):
+                os.unlink(original_file)
+            
+            delete_script(sid, uid)
+            
+            d = SCRIPTS_DIR / str(uid) / sid
+            if d.exists(): 
+                shutil.rmtree(d, ignore_errors=True)
+            
+            for log_file in [f"{sid}.log", f"{sid}_install.log"]:
+                lp = LOGS_DIR / log_file
+                if lp.exists(): 
+                    lp.unlink()
+            
+            await callback.answer("✅ Удалён!")
+        
+        # Обновляем список
+        scripts = get_user_scripts(uid)
+        if scripts:
+            text = f"💻 МОИ ХОСТЫ ({len(scripts)})\n\n"
+            kb = InlineKeyboardBuilder()
+            
+            for i, s in enumerate(scripts, 1):
+                st = "🟢" if s['status'] == 'running' else "🔴"
+                status_text = "запущен" if s['status'] == 'running' else "остановлен"
+                sz = s['size'] / (1024 * 1024) if s['size'] else 0
+                text += f"{i}. {st} {s['name']}\n   └ {sz:.1f}МБ | {status_text}\n"
+                
+                if s['status'] == 'running':
+                    kb.button(text=f"⏹ Стоп", callback_data=f"sc:stop:{s['id']}")
+                else:
+                    kb.button(text=f"▶️ Старт", callback_data=f"sc:start:{s['id']}")
+                kb.button(text=f"📥 Скачать", callback_data=f"download_file:{s['id']}")
+                kb.button(text=f"🗑 Удалить", callback_data=f"sc:del:{s['id']}")
+            
+            kb.button(text="📤 Загрузить ещё", callback_data="upload_file")
+            kb.adjust(3, 1)
+            
+            await callback.message.edit_text(text, reply_markup=kb.as_markup())
+        else:
+            kb = InlineKeyboardBuilder()
+            kb.button(text="📤 Загрузить файл", callback_data="upload_file")
+            kb.adjust(1)
+            await callback.message.edit_text(
+                "😔 Нет хостов\n\nЗагрузите ваш первый скрипт!",
+                reply_markup=kb.as_markup()
+            )
+    
+    except Exception as e:
+        logger.error(f"Script action error: {e}")
+        await callback.answer("❌ Ошибка!")
+
+# ========== МАГАЗИН (ПРЕМИУМ) ==========
+@dp.message(F.text == "🛒 Магазин", BotActiveFilter())
+async def shop_menu(message: Message):
+    kb = InlineKeyboardBuilder()
+    for loc_id, loc_data in LOCATIONS.items():
+        kb.button(text=f"{loc_data['flag']} {loc_data['name']}", callback_data=f"shop_loc:{loc_id}")
+    kb.button(text="❌ Закрыть", callback_data="close_menu")
+    kb.adjust(2)
+    
+    await message.answer(
+        f"🛒 ПРЕМИУМ ТАРИФЫ\n\n"
+        f"🌍 Выберите локацию:\n\n"
+        f"🆓 Бесплатный тариф: {FREE_TRIAL_DAYS} дня\n"
+        f"💎 Премиум даёт больше ресурсов!",
+        reply_markup=kb.as_markup()
+    )
+
+@dp.callback_query(F.data.startswith("shop_loc:"))
+async def shop_select_location(callback: CallbackQuery, state: FSMContext):
+    loc = callback.data.split(":")[1]
+    await state.update_data(location=loc)
+    
+    max_tier = LOCATIONS[loc]['max_tiers']
+    kb = InlineKeyboardBuilder()
+    for t_id in ["1","2","3","4","5"]:
+        if int(t_id) <= max_tier:
+            t_data = TIER_INFO[t_id]
+            kb.button(
+                text=f"{t_data['name']}: {t_data['cpu']} | {t_data['ram']} — от {t_data['price_7d']}₽", 
+                callback_data=f"shop_tier:{t_id}"
+            )
+    kb.button(text="◀️ Назад", callback_data="back_to_shop")
+    kb.adjust(1)
+    
+    await callback.message.edit_text(
+        f"📍 {LOCATIONS[loc]['flag']} {LOCATIONS[loc]['name']}\n\n"
+        f"⚙️ Выберите тариф:",
+        reply_markup=kb.as_markup()
+    )
+
+@dp.callback_query(F.data.startswith("shop_tier:"))
+async def shop_select_tier(callback: CallbackQuery, state: FSMContext):
+    tier = callback.data.split(":")[1]
+    await state.update_data(tier=tier)
+    
+    t_data = TIER_INFO[tier]
+    kb = InlineKeyboardBuilder()
+    for d_id, d_name in DAYS_NAMES.items():
+        price = calc_price(tier, d_id)
+        kb.button(text=f"{d_name} — {price}₽", callback_data=f"shop_days:{d_id}")
+    kb.button(text="◀️ Назад", callback_data="back_to_shop")
+    kb.adjust(1)
+    
+    await callback.message.edit_text(
+        f"📦 {t_data['name']}\n"
+        f"├ CPU: {t_data['cpu']}\n"
+        f"├ RAM: {t_data['ram']}\n"
+        f"└ Скриптов: {t_data['scripts']}\n\n"
+        f"📅 Выберите срок:",
+        reply_markup=kb.as_markup()
+    )
+
+@dp.callback_query(F.data.startswith("shop_days:"))
+async def shop_select_days(callback: CallbackQuery, state: FSMContext):
+    days = callback.data.split(":")[1]
+    data = await state.get_data()
+    location = data.get('location')
+    tier = data.get('tier')
+    
+    if not location or not tier:
+        await callback.answer("❌ Выберите локацию и тариф!")
+        return
+    
+    total = calc_price(tier, days)
+    user = get_user(callback.from_user.id)
+    balance = user.get('balance', 0) if user else 0
+    
+    kb = InlineKeyboardBuilder()
+    if balance >= total:
+        kb.button(text=f"✅ Оплатить {total}₽", callback_data=f"pay:{location}:{tier}:{days}")
+    else:
+        kb.button(text=f"❌ Не хватает {total - balance}₽", callback_data="noop")
+    kb.button(text="💳 Пополнить", callback_data="deposit_menu")
+    kb.button(text="◀️ Назад", callback_data="back_to_shop")
+    kb.adjust(1)
+    
+    await callback.message.edit_text(
+        f"🧾 ЗАКАЗ:\n\n"
+        f"📍 {LOCATIONS[location]['flag']} {LOCATIONS[location]['name']}\n"
+        f"📦 {TIER_INFO[tier]['name']}\n"
+        f"📅 {DAYS_NAMES[days]}\n"
+        f"💰 Итого: {total}₽\n"
+        f"💳 Баланс: {balance}₽",
+        reply_markup=kb.as_markup()
+    )
+
+@dp.callback_query(F.data.startswith("pay:"))
+async def process_payment(callback: CallbackQuery, state: FSMContext):
+    _, location, tier, days = callback.data.split(":")
+    total = calc_price(tier, days)
+    uid = callback.from_user.id
+    
+    user = get_user(uid)
+    if user.get('balance', 0) < total:
+        await callback.answer("❌ Недостаточно средств!")
+        return
+    
+    with get_db() as conn:
+        conn.execute('UPDATE users SET balance=balance-? WHERE user_id=?', (total, uid))
+        conn.commit()
+    
+    days_int = 7 if days=='7' else 30 if days=='30' else 90
+    sub_type = 'basic' if tier in ['1','2'] else 'pro' if tier in ['3','4'] else 'expert'
+    set_subscription(uid, sub_type, days_int, tier, location)
+    
+    await callback.message.edit_text(
+        f"✅ ПРЕМИУМ АКТИВИРОВАН!\n\n"
+        f"📦 {TIER_INFO[tier]['name']}\n"
+        f"📅 {DAYS_NAMES[days]}\n"
+        f"💰 Списано: {total}₽\n\n"
+        f"🎉 Увеличенные лимиты доступны!"
+    )
+    await state.clear()
+
+@dp.callback_query(F.data == "back_to_shop")
+async def back_to_shop(callback: CallbackQuery):
+    await shop_menu(callback.message)
+
+@dp.callback_query(F.data == "close_menu")
+async def close_menu(callback: CallbackQuery):
+    await callback.message.delete()
+
+# ========== ПОДДЕРЖКА ==========
+@dp.message(F.text == "🆘 Поддержка")
+async def btn_support(message: Message):
+    await message.answer(
+        "🆘 ПОДДЕРЖКА\n\n"
+        "Выберите способ связи:",
+        reply_markup=support_keyboard()
+    )
+
+@dp.callback_query(F.data == "chat_to_admin")
+async def chat_to_admin(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(SupportStates.waiting_message)
+    await callback.message.answer(
+        "💬 ЧАТ С АДМИНОМ\n\n"
+        "Отправьте ваше сообщение.\n"
+        "❌ /cancel для отмены"
+    )
+    await callback.answer()
+
+@dp.message(SupportStates.waiting_message)
+async def process_support_message(message: Message, state: FSMContext):
+    if message.text and message.text == '/cancel':
+        await state.clear()
+        await message.answer("❌ Чат закрыт", reply_markup=user_keyboard())
+        return
+    
+    uid = message.from_user.id
+    user = get_user(uid)
+    username = f"@{user.get('username', uid)}" if user else f"#{uid}"
+    
+    for aid in ADMIN_IDS:
+        kb = InlineKeyboardBuilder()
+        kb.button(text=f"✉️ Ответить {username}", callback_data=f"reply_to:{uid}")
+        kb.adjust(1)
+        
+        try:
+            if message.text:
+                await bot.send_message(
+                    aid, 
+                    f"📩 СООБЩЕНИЕ\n"
+                    f"👤 {username}\n"
+                    f"🆔 {uid}\n\n"
+                    f"💬 {message.text}",
+                    reply_markup=kb.as_markup()
+                )
+            elif message.photo:
+                await bot.send_photo(
+                    aid, 
+                    message.photo[-1].file_id,
+                    caption=f"📩 ФОТО\n👤 {username}\n🆔 {uid}",
+                    reply_markup=kb.as_markup()
+                )
+        except Exception as e:
+            logger.error(f"Error sending to admin: {e}")
+    
+    await state.clear()
+    await message.answer("✅ Отправлено!", reply_markup=user_keyboard())
+
+@dp.callback_query(F.data.startswith("reply_to:"))
+async def reply_to_user(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in ADMIN_IDS: return
+    
+    uid = int(callback.data.split(":")[1])
+    await state.set_state(SupportStates.in_chat)
+    await state.update_data(reply_to=uid)
+    
+    await callback.message.answer(f"✏️ Введите ответ для пользователя {uid}:")
+    await callback.answer()
+
+@dp.message(SupportStates.in_chat)
+async def send_reply(message: Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS: return
+    
+    data = await state.get_data()
+    uid = data.get('reply_to')
+    
+    if not uid:
+        await state.clear()
+        return
+    
+    try:
+        if message.text:
+            await bot.send_message(uid, f"📩 Ответ от админа:\n\n{message.text}")
+        elif message.photo:
+            await bot.send_photo(uid, message.photo[-1].file_id, caption="📩 Ответ от админа")
+        
+        await message.answer("✅ Ответ отправлен!")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+    
+    await state.clear()
 
 # ========== ВЫДАЧА ПОДПИСКИ АДМИНОМ ==========
 @dp.message(F.text == "🎁 Выдать подписку", AdminFilter())
 async def admin_give_subscription_start(message: Message, state: FSMContext):
     await state.set_state(AdminSubStates.waiting_user_id)
     await message.answer(
-        "🎁 <b>ВЫДАЧА ПОДПИСКИ</b>\n\n"
+        "🎁 ВЫДАЧА ПОДПИСКИ\n\n"
         "Отправьте ID пользователя:\n"
-        "Пример: <code>123456789</code>\n\n"
+        "Пример: 123456789\n\n"
         "❌ /cancel для отмены"
     )
 
@@ -501,7 +1130,7 @@ async def admin_give_subscription_user_id(message: Message, state: FSMContext):
     try:
         uid = int(message.text.strip())
     except:
-        await message.answer("❌ Неверный формат ID! Отправьте число.")
+        await message.answer("❌ Неверный формат ID!")
         return
     
     user = get_user(uid)
@@ -511,7 +1140,6 @@ async def admin_give_subscription_user_id(message: Message, state: FSMContext):
     
     await state.update_data(target_uid=uid, target_username=user.get('username', 'Нет'))
     
-    # Показываем выбор локации
     kb = InlineKeyboardBuilder()
     for loc_id, loc_data in LOCATIONS.items():
         kb.button(text=f"{loc_data['flag']} {loc_data['name']}", callback_data=f"admin_sub_loc:{loc_id}")
@@ -519,8 +1147,8 @@ async def admin_give_subscription_user_id(message: Message, state: FSMContext):
     kb.adjust(2)
     
     await message.answer(
-        f"👤 Пользователь: <code>{uid}</code> (@{user.get('username', 'Нет')})\n\n"
-        f"🌍 <b>Выберите локацию:</b>",
+        f"👤 Пользователь: {uid} (@{user.get('username', 'Нет')})\n\n"
+        f"🌍 Выберите локацию:",
         reply_markup=kb.as_markup()
     )
 
@@ -543,8 +1171,8 @@ async def admin_sub_select_location(callback: CallbackQuery, state: FSMContext):
     kb.adjust(1)
     
     await callback.message.edit_text(
-        f"📍 <b>{LOCATIONS[loc]['flag']} {LOCATIONS[loc]['name']}</b>\n\n"
-        f"⚙️ <b>Выберите тариф:</b>",
+        f"📍 {LOCATIONS[loc]['flag']} {LOCATIONS[loc]['name']}\n\n"
+        f"⚙️ Выберите тариф:",
         reply_markup=kb.as_markup()
     )
 
@@ -563,11 +1191,11 @@ async def admin_sub_select_tier(callback: CallbackQuery, state: FSMContext):
     kb.adjust(2)
     
     await callback.message.edit_text(
-        f"📦 <b>{TIER_INFO[tier]['name']}</b>\n"
+        f"📦 {TIER_INFO[tier]['name']}\n"
         f"├ CPU: {TIER_INFO[tier]['cpu']}\n"
         f"├ RAM: {TIER_INFO[tier]['ram']}\n"
         f"└ Скриптов: {TIER_INFO[tier]['scripts']}\n\n"
-        f"📅 <b>Выберите срок:</b>",
+        f"📅 Выберите срок:",
         reply_markup=kb.as_markup()
     )
 
@@ -581,24 +1209,22 @@ async def admin_sub_select_days(callback: CallbackQuery, state: FSMContext):
     loc = data.get('admin_loc')
     tier = data.get('admin_tier')
     
-    # Выдаем подписку
     sub_type = 'basic' if tier in ['1','2'] else 'pro' if tier in ['3','4'] else 'expert'
     set_subscription(target_uid, sub_type, days, tier, loc)
     
     await callback.message.edit_text(
-        f"✅ <b>ПОДПИСКА ВЫДАНА!</b>\n\n"
-        f"👤 Пользователь: <code>{target_uid}</code> (@{target_username})\n"
+        f"✅ ПОДПИСКА ВЫДАНА!\n\n"
+        f"👤 Пользователь: {target_uid} (@{target_username})\n"
         f"📍 {LOCATIONS[loc]['flag']} {LOCATIONS[loc]['name']}\n"
         f"📦 {TIER_INFO[tier]['name']}\n"
         f"📅 {days} дней\n"
         f"💎 Тип: {sub_type.upper()}"
     )
     
-    # Уведомляем пользователя
     try:
         await bot.send_message(
             target_uid,
-            f"🎁 <b>Администратор выдал вам подписку!</b>\n\n"
+            f"🎁 Администратор выдал вам подписку!\n\n"
             f"📍 {LOCATIONS[loc]['flag']} {LOCATIONS[loc]['name']}\n"
             f"📦 {TIER_INFO[tier]['name']}\n"
             f"📅 {days} дней\n\n"
@@ -622,8 +1248,8 @@ async def admin_sub_back_to_loc(callback: CallbackQuery, state: FSMContext):
     kb.adjust(2)
     
     await callback.message.edit_text(
-        f"👤 Пользователь: <code>{target_uid}</code> (@{target_username})\n\n"
-        f"🌍 <b>Выберите локацию:</b>",
+        f"👤 Пользователь: {target_uid} (@{target_username})\n\n"
+        f"🌍 Выберите локацию:",
         reply_markup=kb.as_markup()
     )
 
@@ -650,8 +1276,8 @@ async def admin_sub_back_to_tier(callback: CallbackQuery, state: FSMContext):
     kb.adjust(1)
     
     await callback.message.edit_text(
-        f"📍 <b>{LOCATIONS[loc]['flag']} {LOCATIONS[loc]['name']}</b>\n\n"
-        f"⚙️ <b>Выберите тариф:</b>",
+        f"📍 {LOCATIONS[loc]['flag']} {LOCATIONS[loc]['name']}\n\n"
+        f"⚙️ Выберите тариф:",
         reply_markup=kb.as_markup()
     )
 
@@ -661,160 +1287,275 @@ async def admin_sub_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("❌ Выдача подписки отменена")
     await callback.answer()
 
-# ========== ОТЗЫВ ПОДПИСКИ АДМИНОМ ==========
+# ========== ОТЗЫВ ПОДПИСКИ ==========
 @dp.message(F.text == "❌ Отозвать подписку", AdminFilter())
-async def admin_remove_subscription(message: Message):
+async def admin_remove_subscription(message: Message, state: FSMContext):
+    await state.set_state(AdminSubStates.waiting_user_id)
+    await state.update_data(action='remove_sub')
+    await message.answer(
+        "❌ ОТЗЫВ ПОДПИСКИ\n\n"
+        "Отправьте ID пользователя:\n"
+        "❌ /cancel для отмены"
+    )
+
+# ========== СТОП/СТАРТ БОТА ==========
+@dp.message(F.text == "🛑 Стоп бот", AdminFilter())
+async def stop_bot(message: Message):
+    global bot_active
+    bot_active = False
+    
+    all_scripts = get_all_scripts()
+    stopped = 0
+    for s in all_scripts:
+        if s['status'] == 'running':
+            if s.get('container_id'):
+                kill_process(s['container_id'])
+            update_script_status(s['id'], 'stopped')
+            stopped += 1
+    
+    await message.answer(f"🔴 БОТ ОСТАНОВЛЕН!\n\n⏹ Остановлено хостов: {stopped}")
+
+@dp.message(F.text == "🟢 Старт бот", AdminFilter())
+async def start_bot(message: Message):
+    global bot_active
+    bot_active = True
+    
+    await message.answer("🟢 БОТ ЗАПУЩЕН!")
+
+# ========== АДМИН-ПАНЕЛЬ ==========
+@dp.message(F.text == "📊 Статистика", AdminFilter())
+async def admin_stats(message: Message):
+    u = get_all_users()
+    s = get_all_scripts()
+    r = len([x for x in s if x['status']=='running'])
+    premium = len([x for x in u if x.get('is_premium', 0) == 1])
+    total_balance = sum(x.get('balance', 0) for x in u)
+    
+    await message.answer(
+        f"📊 СТАТИСТИКА\n\n"
+        f"👥 Всего: {len(u)}\n"
+        f"├ 🆓 Бесплатных: {len(u) - premium}\n"
+        f"└ 💎 Премиум: {premium}\n"
+        f"📦 Хостов: {len(s)} (🟢{r} 🔴{len(s)-r})\n"
+        f"💰 Баланс users: {total_balance:.2f}₽\n"
+        f"📈 Версия: {VERSION}"
+    )
+
+@dp.message(F.text == "👥 Пользователи", AdminFilter())
+async def admin_users(message: Message):
     users = get_all_users()
     if not users:
         await message.answer("Нет пользователей")
         return
     
+    text = f"👥 ПОЛЬЗОВАТЕЛИ ({len(users)})\n\n"
+    for i, u in enumerate(users[:20], 1):
+        sub = "💎" if u.get('is_premium') else "🆓"
+        text += f"{i}. {sub} {u['user_id']} | {u.get('username', 'Нет')} | {u.get('balance', 0)}₽\n"
+    
+    if len(users) > 20:
+        text += f"\n... и ещё {len(users)-20}"
+    
+    await message.answer(text)
+
+@dp.message(F.text == "📦 Хосты", AdminFilter())
+async def admin_scripts(message: Message):
+    scripts = get_all_scripts()
+    if not scripts:
+        await message.answer("Нет хостов")
+        return
+    
+    text = f"📦 ХОСТЫ ({len(scripts)})\n\n"
+    for i, s in enumerate(scripts[:15], 1):
+        st = "🟢" if s['status']=='running' else "🔴"
+        text += f"{i}. {st} {s['id']} | {s['name']} | user:{s['user_id']}\n"
+    
+    await message.answer(text)
+
+@dp.message(F.text == "👤 Режим юзера", AdminFilter())
+async def toggle_admin_mode(message: Message):
+    uid = message.from_user.id
+    if admin_mode.get(uid, True):
+        admin_mode[uid] = False
+        await message.answer("👤 Режим пользователя\n/admin для возврата", reply_markup=user_keyboard())
+    else:
+        admin_mode[uid] = True
+        await message.answer("👑 Режим админа", reply_markup=admin_keyboard())
+
+# ========== ПРОФИЛЬ И БАЛАНС ==========
+@dp.message(F.text == "👤 Профиль")
+async def btn_profile(message: Message):
+    uid = message.from_user.id
+    user = get_user(uid)
+    if not user: await message.answer("❌ /start"); return
+    
+    sub_info, days, sub_type = get_subscription_info(uid)
+    scripts = get_user_scripts(uid)
+    mx_scripts, mx_size = get_user_limits(uid)
+    
+    text = (
+        f"👤 ПРОФИЛЬ\n\n"
+        f"├ 🆔 ID: {uid}\n"
+        f"├ 👤 @{user.get('username', 'Нет')}\n"
+        f"├ 💰 Баланс: {user.get('balance', 0):.2f}₽\n"
+        f"├ 📋 Тариф: {sub_info}\n"
+        f"├ 📦 Хостов: {len(scripts)}/{mx_scripts}\n"
+        f"└ 📊 Макс. размер: {mx_size} МБ\n"
+    )
+    
+    if days and isinstance(days, int) and days > 0:
+        text += f"\n⏳ Осталось: {days} дн."
+    
     kb = InlineKeyboardBuilder()
-    for u in users[:30]:  # Показываем первых 30 пользователей
-        sub_mark = "💎" if u.get('is_premium') else "🆓"
-        username = u.get('username', 'Нет')
-        kb.button(
-            text=f"{sub_mark} {u['user_id']} | {username}",
-            callback_data=f"admin_remove_sub:{u['user_id']}"
-        )
-    
-    if len(users) > 30:
-        kb.button(text="... и ещё пользователи", callback_data="noop")
-    
-    kb.button(text="🔍 Поиск по ID", callback_data="admin_remove_search")
-    kb.button(text="❌ Отмена", callback_data="close_menu")
+    kb.button(text="🎫 Активировать промокод", callback_data="activate_promo")
+    kb.button(text="💳 Пополнить баланс", callback_data="deposit_menu")
     kb.adjust(1)
     
-    await message.answer(
-        "❌ <b>ОТЗЫВ ПОДПИСКИ</b>\n\n"
-        "Выберите пользователя для отзыва подписки:",
-        reply_markup=kb.as_markup()
-    )
+    await message.answer(text, reply_markup=kb.as_markup())
 
-@dp.callback_query(F.data == "admin_remove_search", AdminFilter())
-async def admin_remove_search(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(AdminSubStates.waiting_user_id)
-    # Меняем состояние для поиска
-    await state.update_data(action='remove_sub')
-    await callback.message.answer("🔍 Отправьте ID пользователя для отзыва подписки:")
+@dp.callback_query(F.data == "activate_promo")
+async def activate_promo_callback(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(PromoStates.waiting_code)
+    await callback.message.answer("🎁 Введите промокод:")
     await callback.answer()
 
-@dp.callback_query(F.data.startswith("admin_remove_sub:"), AdminFilter())
-async def admin_remove_sub_confirm(callback: CallbackQuery):
-    uid = int(callback.data.split(":")[1])
-    user = get_user(uid)
+@dp.message(PromoStates.waiting_code)
+async def process_promo(message: Message, state: FSMContext):
+    code = message.text.strip()
+    uid = message.from_user.id
     
-    if not user:
-        await callback.answer("Пользователь не найден")
-        return
-    
-    kb = InlineKeyboardBuilder()
-    kb.button(text="✅ Да, отозвать", callback_data=f"admin_remove_confirm:{uid}")
-    kb.button(text="❌ Отмена", callback_data="close_menu")
-    kb.adjust(2)
-    
-    await callback.message.edit_text(
-        f"⚠️ <b>Отозвать подписку?</b>\n\n"
-        f"👤 ID: <code>{uid}</code>\n"
-        f"👤 @{user.get('username', 'Нет')}\n"
-        f"📋 Тариф: {user.get('subscription', 'free').upper()}\n"
-        f"💎 Премиум: {'Да' if user.get('is_premium') else 'Нет'}\n\n"
-        f"❗ Подписка будет отозвана!",
-        reply_markup=kb.as_markup()
-    )
-
-@dp.callback_query(F.data.startswith("admin_remove_confirm:"), AdminFilter())
-async def admin_remove_sub_execute(callback: CallbackQuery):
-    uid = int(callback.data.split(":")[1])
-    
-    remove_subscription(uid)
-    
-    await callback.message.edit_text(
-        f"✅ <b>ПОДПИСКА ОТОЗВАНА!</b>\n\n"
-        f"👤 ID: <code>{uid}</code>\n"
-        f"📋 Тариф сброшен до бесплатного"
-    )
-    
-    # Уведомляем пользователя
-    try:
-        await bot.send_message(
-            uid,
-            "⚠️ <b>Ваша подписка была отозвана администратором.</b>\n\n"
-            "💎 Вы можете приобрести новую подписку в магазине."
-        )
-    except:
-        pass
-    
-    await callback.answer("✅ Подписка отозвана!")
-
-# ========== ОБРАБОТКА ПОИСКА ДЛЯ ОТЗЫВА ==========
-@dp.message(AdminSubStates.waiting_user_id, AdminFilter())
-async def admin_search_user_for_remove(message: Message, state: FSMContext):
-    data = await state.get_data()
-    action = data.get('action')
-    
-    if message.text == '/cancel':
-        await state.clear()
-        await message.answer("❌ Отменено", reply_markup=admin_keyboard())
-        return
-    
-    try:
-        uid = int(message.text.strip())
-    except:
-        await message.answer("❌ Неверный формат ID!")
-        return
-    
-    user = get_user(uid)
-    if not user:
-        await message.answer(f"❌ Пользователь с ID {uid} не найден!")
-        return
-    
-    if action == 'remove_sub':
-        # Отзываем подписку
-        remove_subscription(uid)
-        await message.answer(
-            f"✅ <b>ПОДПИСКА ОТОЗВАНА!</b>\n\n"
-            f"👤 ID: <code>{uid}</code>\n"
-            f"👤 @{user.get('username', 'Нет')}\n"
-            f"📋 Тариф сброшен до бесплатного"
-        )
-        
-        try:
-            await bot.send_message(
-                uid,
-                "⚠️ <b>Ваша подписка была отозвана администратором.</b>"
-            )
-        except:
-            pass
+    success, msg = activate_promo(uid, code)
+    if success:
+        await message.answer(f"✅ {msg}")
+    else:
+        await message.answer(f"❌ {msg}")
     
     await state.clear()
 
-# Остальные функции остаются без изменений...
-# [Здесь должны быть все остальные хендлеры из предыдущего кода]
+@dp.message(F.text == "💳 Пополнить")
+async def btn_deposit(message: Message):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="💳 Карта/СБП", callback_data="dep_card")
+    kb.button(text="⭐ Stars", callback_data="dep_stars")
+    kb.adjust(1)
+    await message.answer("💳 ПОПОЛНЕНИЕ БАЛАНСА\n\n👇 Выберите способ:", reply_markup=kb.as_markup())
 
-# ========== ЗАГРУЗКА ФАЙЛОВ ==========
-@dp.message(F.text == "📤 Загрузить файл", BotActiveFilter())
-async def btn_upload(message: Message, state: FSMContext):
-    # ... (код из предыдущей версии)
-    pass
+@dp.callback_query(F.data == "dep_card")
+async def dep_card(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(DepositStates.waiting_amount)
+    await state.update_data(dep_method="card")
+    await callback.message.answer("💰 Введите сумму (мин 50₽):")
+    await callback.answer()
 
-# ... все остальные хендлеры из предыдущего кода ...
+@dp.callback_query(F.data == "dep_stars")
+async def dep_stars(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(DepositStates.waiting_amount)
+    await state.update_data(dep_method="stars")
+    await callback.message.answer("⭐ Введите сумму (мин 50⭐):")
+    await callback.answer()
+
+@dp.message(DepositStates.waiting_amount)
+async def process_deposit_amount(message: Message, state: FSMContext):
+    data = await state.get_data()
+    method = data.get("dep_method")
+    
+    try:
+        amount = int(message.text)
+        
+        if method == "card":
+            if amount < 50:
+                await message.answer("❌ Минимум 50₽")
+                return
+            pending_payments[message.from_user.id] = {'type': 'balance', 'amount': amount}
+            await message.answer(
+                f"💳 ОПЛАТА\n\n"
+                f"💰 Сумма: {amount}₽\n"
+                f"🏦 Банк: СБЕР\n"
+                f"💳 Номер: 2202206714879132\n\n"
+                f"📸 Отправьте скриншот оплаты"
+            )
+        
+        elif method == "stars":
+            if amount < 50:
+                await message.answer("❌ Минимум 50⭐")
+                return
+            await message.answer_invoice(
+                title="Пополнение баланса",
+                description=f"+{amount}⭐ на баланс",
+                payload=f"stars_{amount}",
+                currency="XTR",
+                prices=[{"label": f"+{amount}⭐", "amount": amount}]
+            )
+        
+        await state.clear()
+    except:
+        await message.answer("❌ Неверная сумма!")
+
+@dp.message(F.photo)
+async def handle_screenshot(message: Message):
+    uid = message.from_user.id
+    if uid not in pending_payments: return
+    
+    pi = pending_payments.pop(uid)
+    for aid in ADMIN_IDS:
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✅ Подтвердить", callback_data=f"app_bal|{uid}|{pi['amount']}")
+        kb.button(text="❌ Отклонить", callback_data=f"rej|{uid}")
+        kb.adjust(2)
+        
+        await bot.send_photo(
+            aid, 
+            message.photo[-1].file_id,
+            caption=f"💰 Пополнение +{pi['amount']}₽\n👤 {uid}",
+            reply_markup=kb.as_markup()
+        )
+    
+    await message.answer("✅ Чек отправлен на проверку!")
+
+@dp.callback_query(F.data.startswith("app_bal|"))
+async def approve_payment(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS: return
+    
+    try:
+        _, uid, amount = callback.data.split("|")
+        uid, amount = int(uid), float(amount)
+        
+        with get_db() as conn:
+            conn.execute('UPDATE users SET balance=balance+? WHERE user_id=?', (amount, uid))
+            conn.commit()
+        
+        await bot.send_message(uid, f"✅ Баланс пополнен на {amount}₽")
+        await callback.message.edit_caption(f"✅ Подтверждено +{amount}₽")
+        await callback.answer("✅")
+    except Exception as e:
+        await callback.answer(f"❌ {e}")
+
+@dp.callback_query(F.data.startswith("rej|"))
+async def reject_payment(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS: return
+    
+    uid = int(callback.data.replace("rej|", ""))
+    await bot.send_message(uid, "❌ Оплата отклонена")
+    await callback.message.edit_caption("❌ Отклонено")
+    await callback.answer()
+
+@dp.callback_query(F.data == "deposit_menu")
+async def deposit_menu(callback: CallbackQuery):
+    await btn_deposit(callback.message)
+    await callback.answer()
+
+@dp.callback_query(F.data == "noop")
+async def noop(callback: CallbackQuery):
+    await callback.answer("❌ Недостаточно средств")
 
 # ========== ЗАПУСК ==========
 async def main():
     init_db()
     await bot.set_my_commands([BotCommand(command="start", description="🚀 Главное меню")])
     await bot.delete_webhook(drop_pending_updates=True)
-    logger.info(f"🚀 Hosting Bot v{VERSION} запущен! Админ может выдавать и отзывать подписки!")
+    logger.info(f"🚀 Hosting Bot v{VERSION} запущен!")
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
-    print(f"""
-╔══════════════════════════════════════════╗
-║     🚀 Hosting Bot v{VERSION}                ║
-║     Управление подписками: ✅           ║
-║     Выдача подписки: ✅                 ║
-║     Отзыв подписки: ✅                  ║
-╚══════════════════════════════════════════╝
-    """)
+    print(f"🚀 Hosting Bot v{VERSION} starting...")
     asyncio.run(main())
