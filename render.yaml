@@ -1,9 +1,11 @@
 services:
-  - type: worker
+  - type: web
     name: hosting-bot
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
       - key: BOT_TOKEN
-        value: 8964647336:AAHs5cGpAuSGaXbDBeG-lmS6z0fgXIEM2rs
+        value: 8964647336:AAEoMHcCKOeMU37VasxqbWItyFIFUg4mGFQ
+      - key: PORT
+        value: "10000"
