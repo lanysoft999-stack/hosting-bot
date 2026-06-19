@@ -1,4 +1,4 @@
-# bot.py - Хостинг бот на TeleBot (ПОЛНАЯ РАБОЧАЯ ВЕРСИЯ)
+# bot.py - Хостинг бот на TeleBot (Полная версия со всеми функциями)
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
@@ -11,7 +11,6 @@ import shutil
 import zipfile
 import subprocess
 import signal
-import asyncio
 import threading
 import time
 import traceback
@@ -29,7 +28,7 @@ logger = logging.getLogger('hosting_bot')
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ.get("BOT_TOKEN", "8964647336:AAHs5cGpAuSGaXbDBeG-lmS6z0fgXIEM2rs")
-VERSION = "37.0.0"
+VERSION = "38.0.0"
 ADMIN_IDS = [314148464]
 SUPPORT_URL = "https://t.me/hesers"
 FREE_TRIAL_DAYS = 3
@@ -263,10 +262,8 @@ def kill_process(pid):
 
 # ========== ЗАПУСК СКРИПТА ==========
 def run_script_sync(sid, path):
-    """Запускает Python скрипт синхронно"""
     path_obj = Path(path)
     
-    # Ищем .py файлы
     if path_obj.is_file() and path_obj.suffix == '.py':
         py_files = [path_obj]
         path_obj = path_obj.parent
@@ -278,7 +275,6 @@ def run_script_sync(sid, path):
     if not py_files:
         return None, "Нет .py файлов"
     
-    # Выбираем главный файл
     main_file = None
     for f in py_files:
         if f.name == 'main.py':
@@ -294,7 +290,6 @@ def run_script_sync(sid, path):
     logger.info(f"[{sid}] Starting: {main_file}")
     
     try:
-        # Устанавливаем зависимости
         req_file = path_obj / "requirements.txt"
         if req_file.exists():
             logger.info(f"[{sid}] Installing requirements...")
@@ -303,7 +298,6 @@ def run_script_sync(sid, path):
                 capture_output=True
             )
         
-        # Запускаем скрипт
         log_path = LOGS_DIR / f"{sid}.log"
         log_file = open(log_path, 'w')
         
@@ -442,7 +436,6 @@ def cmd_cancel(message):
 def handle_document(message):
     uid = message.from_user.id
     
-    # Блокируем прямые документы
     if uid not in upload_waiting:
         bot.reply_to(message, "❌ Используйте кнопку «📤 Загрузить»!")
         return
@@ -469,7 +462,6 @@ def handle_document(message):
     tmp_file = tmp_dir / fn
     
     try:
-        # Скачиваем файл
         file_info = bot.get_file(doc.file_id)
         downloaded = bot.download_file(file_info.file_path)
         
@@ -478,12 +470,10 @@ def handle_document(message):
         
         bot.edit_message_text("📦 Обработка...", uid, status_msg.message_id)
         
-        # Сохраняем оригинал
         with open(tmp_file, 'rb') as f:
             file_data = f.read()
         original_path = save_user_file(uid, fn, file_data)
         
-        # Создаем ID и папку
         sid = uuid.uuid4().hex[:8]
         script_dir = SCRIPTS_DIR / str(uid) / sid
         script_dir.mkdir(parents=True, exist_ok=True)
@@ -508,7 +498,6 @@ def handle_document(message):
         bot.edit_message_text("⚡ Запуск скрипта...", uid, status_msg.message_id)
         logger.info(f"User {uid} starting script {sid}: {fn}")
         
-        # ЗАПУСКАЕМ СКРИПТ
         pid, error = run_script_sync(sid, str(script_dir))
         
         if error:
@@ -518,10 +507,7 @@ def handle_document(message):
             upload_waiting.discard(uid)
             return
         
-        # Сохраняем в БД
         add_script(sid, uid, fn, str(script_dir), total_size, original_path)
-        
-        logger.info(f"Script {sid} started with PID {pid}")
         
         kb = InlineKeyboardMarkup()
         kb.add(
@@ -763,7 +749,6 @@ def handle_text(message):
     if uid in admin_waiting:
         action = admin_waiting.pop(uid)
         
-        # Обработка баланса
         if isinstance(action, tuple) and action[0] == 'balance':
             target_uid = action[1]
             try:
@@ -776,7 +761,6 @@ def handle_text(message):
                 bot.send_message(uid, "❌ Неверная сумма")
             return
         
-        # Поиск пользователя
         if action == 'search':
             try:
                 target_uid = int(text)
@@ -802,7 +786,6 @@ def handle_text(message):
                 bot.send_message(uid, "❌ Неверный ID")
             return
         
-        # Выдача/отзыв
         try:
             target_uid = int(text)
         except:
@@ -837,18 +820,12 @@ def handle_text(message):
         support_chat.pop(uid, None)
         bot.send_message(uid, "✅ Отправлено!")
         return
-    
-    # Ответ админа
-    if uid in ADMIN_IDS and hasattr(message, 'reply_to_message') and message.reply_to_message:
-        # Это может быть ответом
-        pass
 
 # ========== ФОТО ==========
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     uid = message.from_user.id
     
-    # Чат с админом
     if support_chat.get(uid):
         for aid in ADMIN_IDS:
             kb = InlineKeyboardMarkup()
@@ -860,7 +837,6 @@ def handle_photo(message):
         bot.send_message(uid, "✅ Отправлено!")
         return
     
-    # Скриншот оплаты
     for aid in ADMIN_IDS:
         kb = InlineKeyboardMarkup()
         kb.add(
@@ -882,7 +858,6 @@ def callback_handler(call):
     data = call.data
     
     try:
-        # Навигация
         if data == "upload":
             upload_start(call.message)
         elif data == "hosts":
@@ -906,7 +881,6 @@ def callback_handler(call):
         elif data == "admin_users_list":
             admin_users(call.message)
         
-        # Скрипты
         elif data.startswith("sc:"):
             _, action, sid = data.split(":")
             s = get_script(sid)
@@ -939,7 +913,6 @@ def callback_handler(call):
                 bot.answer_callback_query(call.id, "✅ Удалён")
                 show_hosts(call.message)
         
-        # Скачивание
         elif data.startswith("dl:"):
             sid = data.split(":")[1]
             s = get_script(sid)
@@ -958,7 +931,6 @@ def callback_handler(call):
                 zp.unlink()
             bot.answer_callback_query(call.id, "✅")
         
-        # Тарифы
         elif data.startswith("tier:"):
             tier = data.split(":")[1]
             kb = InlineKeyboardMarkup()
@@ -1005,7 +977,6 @@ def callback_handler(call):
             bot.edit_message_text(f"✅ <b>Куплено!</b>\n{TIER_INFO[tier]['name']}\n📅 {DAYS_NAMES[days]}\n💰 {total}₽",
                                 uid, call.message.message_id)
         
-        # Админ: пользователи
         elif data.startswith("auser:"):
             if uid not in ADMIN_IDS: return
             target = int(data.split(":")[1])
@@ -1219,7 +1190,14 @@ if __name__ == '__main__':
         threading.Thread(target=run_web_server, daemon=True).start()
         
         logger.info(f"🚀 Hosting Bot v{VERSION} started on port {PORT}")
-        print(f"🚀 Hosting Bot v{VERSION} | TeleBot | Port: {PORT}")
+        print(f"""
+╔══════════════════════════════════════════╗
+║     🚀 Hosting Bot v{VERSION}                ║
+║     TeleBot Full Version                 ║
+║     🌐 Port: {PORT}                          ║
+║     🌱 29₽ | ⚡ 49₽ | 👑 79₽            ║
+╚══════════════════════════════════════════╝
+        """)
         
         bot.infinity_polling()
     finally:
