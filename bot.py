@@ -1,4 +1,4 @@
-# bot.py - Хостинг бот на aiogram 3.x (Полная рабочая версия)
+# bot.py - Хостинг бот на aiogram 3.x (Финальная рабочая версия)
 import asyncio
 import asyncio.subprocess
 import logging
@@ -37,13 +37,13 @@ logger = logging.getLogger('hosting_bot')
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ.get("BOT_TOKEN", "8964647336:AAHs5cGpAuSGaXbDBeG-lmS6z0fgXIEM2rs")
-VERSION = "33.0.0"
+VERSION = "34.0.0"
 ADMIN_IDS = [314148464]
 SUPPORT_URL = "https://t.me/hesers"
 FREE_TRIAL_DAYS = 3
 FREE_MAX_SCRIPTS = 3
 FREE_MAX_SIZE_MB = 5
-PORT = int(os.environ.get('PORT', 8000))
+PORT = int(os.environ.get('PORT', 10000))
 
 BASE_DIR = Path(__file__).parent
 SCRIPTS_DIR = BASE_DIR / "scripts"
@@ -51,9 +51,38 @@ LOGS_DIR = BASE_DIR / "logs"
 TEMP_DIR = BASE_DIR / "temp"
 FILES_DIR = BASE_DIR / "user_files"
 DATABASE_PATH = BASE_DIR / "bot_database.db"
+LOCK_FILE = BASE_DIR / "bot.lock"
 
 for d in [SCRIPTS_DIR, LOGS_DIR, TEMP_DIR, FILES_DIR]:
     d.mkdir(exist_ok=True)
+
+# ========== ПРОВЕРКА ЕДИНСТВЕННОГО ЭКЗЕМПЛЯРА ==========
+def check_single_instance():
+    """Проверяет что запущен только один экземпляр бота"""
+    if LOCK_FILE.exists():
+        try:
+            with open(LOCK_FILE) as f:
+                old_pid = int(f.read().strip())
+            try:
+                os.kill(old_pid, 0)
+                logger.warning(f"Bot already running with PID {old_pid}")
+                return False
+            except OSError:
+                LOCK_FILE.unlink()
+        except (ValueError, FileNotFoundError):
+            LOCK_FILE.unlink()
+    
+    with open(LOCK_FILE, 'w') as f:
+        f.write(str(os.getpid()))
+    return True
+
+def remove_lock():
+    """Удаляет lock файл"""
+    try:
+        if LOCK_FILE.exists():
+            LOCK_FILE.unlink()
+    except:
+        pass
 
 # ========== ТАРИФЫ ==========
 TIER_INFO = {
@@ -240,7 +269,6 @@ async def run_script_async(sid, path):
     """Запускает Python скрипт"""
     path_obj = Path(path)
     
-    # Ищем .py файлы
     if path_obj.is_file() and path_obj.suffix == '.py':
         py_files = [path_obj]
         path_obj = path_obj.parent
@@ -252,7 +280,6 @@ async def run_script_async(sid, path):
     if not py_files:
         return None, "Нет .py файлов"
     
-    # Выбираем главный файл
     main_file = None
     for f in py_files:
         if f.name == 'main.py':
@@ -268,7 +295,6 @@ async def run_script_async(sid, path):
     logger.info(f"[{sid}] Starting: {main_file}")
     
     try:
-        # Устанавливаем зависимости
         req_file = path_obj / "requirements.txt"
         if req_file.exists():
             logger.info(f"[{sid}] Installing requirements...")
@@ -280,7 +306,6 @@ async def run_script_async(sid, path):
             )
             await proc.communicate()
         
-        # Запускаем скрипт
         log_path = LOGS_DIR / f"{sid}.log"
         log_file = open(log_path, 'w')
         
@@ -333,9 +358,10 @@ async def web_status(request):
     <head>
         <title>Hosting Bot v{VERSION}</title>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
             body {{ font-family: Arial; margin: 20px; background: #f5f5f5; }}
-            .card {{ background: white; padding: 20px; border-radius: 10px; margin: 10px 0; }}
+            .card {{ background: white; padding: 20px; border-radius: 10px; margin: 10px 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
             .online {{ color: #4CAF50; }}
             .stat {{ font-size: 24px; font-weight: bold; color: #2196F3; }}
         </style>
@@ -481,7 +507,6 @@ async def upload_process(message: Message, state: FSMContext):
     fs = doc.file_size
     _, mx = get_user_limits(uid)
     
-    # Проверки
     if not fn.endswith(('.py', '.zip')):
         await state.clear()
         return await message.answer("❌ Только .py или .zip!")
@@ -490,24 +515,19 @@ async def upload_process(message: Message, state: FSMContext):
         await state.clear()
         return await message.answer(f"❌ Макс {mx}МБ!")
     
-    # Статус сообщение
     status_msg = await message.answer("📥 Скачивание файла...")
     
-    # Временная папка
     tmp_dir = TEMP_DIR / str(uid) / uuid.uuid4().hex[:8]
     tmp_dir.mkdir(parents=True, exist_ok=True)
     tmp_file = tmp_dir / fn
     
     try:
-        # Скачиваем файл
         await bot.download(doc, destination=tmp_file)
         await status_msg.edit_text("📦 Обработка файла...")
         
-        # Сохраняем оригинал
         file_data = tmp_file.read_bytes()
         original_path = save_user_file(uid, fn, file_data)
         
-        # ID скрипта
         sid = uuid.uuid4().hex[:8]
         script_dir = SCRIPTS_DIR / str(uid) / sid
         script_dir.mkdir(parents=True, exist_ok=True)
@@ -529,7 +549,6 @@ async def upload_process(message: Message, state: FSMContext):
             shutil.copy2(str(tmp_file), str(script_dir / fn))
             total_size = fs
         
-        # Запуск
         await status_msg.edit_text("⚡ Запуск скрипта...")
         logger.info(f"User {uid} starting script {sid}: {fn}")
         
@@ -542,10 +561,9 @@ async def upload_process(message: Message, state: FSMContext):
             await state.clear()
             return
         
-        # Сохраняем в БД
         add_script(sid, uid, fn, str(script_dir), total_size, original_path)
         
-        logger.info(f"Script {sid} started successfully with PID {pid}")
+        logger.info(f"Script {sid} started with PID {pid}")
         
         kb = InlineKeyboardBuilder()
         kb.button(text="📥 Скачать файл", callback_data=f"dl:{sid}")
@@ -1284,16 +1302,28 @@ async def profile(message: Message):
 
 # ========== ЗАПУСК ==========
 async def main():
-    init_db()
-    await bot.set_my_commands([
-        BotCommand(command="start", description="🚀 Меню"),
-        BotCommand(command="admin", description="👑 Админ")
-    ])
-    await bot.delete_webhook(drop_pending_updates=True)
-    asyncio.create_task(run_web_server())
-    logger.info(f"🚀 Hosting Bot v{VERSION} started on port {PORT}")
-    await dp.start_polling(bot)
+    # Проверка единственного экземпляра
+    if not check_single_instance():
+        logger.error("Another instance is already running!")
+        sys.exit(1)
+    
+    try:
+        init_db()
+        await bot.set_my_commands([
+            BotCommand(command="start", description="🚀 Меню"),
+            BotCommand(command="admin", description="👑 Админ")
+        ])
+        await bot.delete_webhook(drop_pending_updates=True)
+        await asyncio.sleep(1)  # Ждем завершения старых соединений
+        
+        asyncio.create_task(run_web_server())
+        
+        logger.info(f"🚀 Hosting Bot v{VERSION} started on port {PORT}")
+        print(f"🚀 Hosting Bot v{VERSION} | Port: {PORT}")
+        
+        await dp.start_polling(bot)
+    finally:
+        remove_lock()
 
 if __name__ == '__main__':
-    print(f"🚀 Hosting Bot v{VERSION}")
     asyncio.run(main())
