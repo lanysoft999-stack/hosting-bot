@@ -1,6 +1,7 @@
-# bot.py - Хостинг бот на aiogram 3.x (Финальная рабочая версия)
-import asyncio
-import asyncio.subprocess
+# bot.py - Хостинг бот на TeleBot (ПОЛНАЯ ВЕРСИЯ)
+import telebot
+from telebot import types
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 import logging
 import sys
 import os
@@ -10,22 +11,13 @@ import shutil
 import zipfile
 import subprocess
 import signal
+import asyncio
+import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
-
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
-from aiogram.filters import Command, CommandStart, Filter
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.context import FSMContext
-from aiogram.types import (
-    InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton,
-    BotCommand, Message, CallbackQuery, FSInputFile
-)
-from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiohttp import web
+import traceback
 
 # ========== ЛОГГИРОВАНИЕ ==========
 logging.basicConfig(
@@ -37,7 +29,7 @@ logger = logging.getLogger('hosting_bot')
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ.get("BOT_TOKEN", "8964647336:AAHs5cGpAuSGaXbDBeG-lmS6z0fgXIEM2rs")
-VERSION = "34.0.0"
+VERSION = "36.0.0"
 ADMIN_IDS = [314148464]
 SUPPORT_URL = "https://t.me/hesers"
 FREE_TRIAL_DAYS = 3
@@ -58,7 +50,6 @@ for d in [SCRIPTS_DIR, LOGS_DIR, TEMP_DIR, FILES_DIR]:
 
 # ========== ПРОВЕРКА ЕДИНСТВЕННОГО ЭКЗЕМПЛЯРА ==========
 def check_single_instance():
-    """Проверяет что запущен только один экземпляр бота"""
     if LOCK_FILE.exists():
         try:
             with open(LOCK_FILE) as f:
@@ -77,7 +68,6 @@ def check_single_instance():
     return True
 
 def remove_lock():
-    """Удаляет lock файл"""
     try:
         if LOCK_FILE.exists():
             LOCK_FILE.unlink()
@@ -265,8 +255,24 @@ def create_promo(code, ptype, days, max_uses):
                     (code, ptype, days, max_uses))
         conn.commit()
 
+def kill_process(pid):
+    try: 
+        os.kill(int(pid), signal.SIGTERM)
+        return True
+    except: 
+        return False
+
+def run_script_sync(sid, path):
+    """Синхронный запуск скрипта"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        result = loop.run_until_complete(run_script_async(sid, path))
+    finally:
+        loop.close()
+    return result
+
 async def run_script_async(sid, path):
-    """Запускает Python скрипт"""
     path_obj = Path(path)
     
     if path_obj.is_file() and path_obj.suffix == '.py':
@@ -297,7 +303,6 @@ async def run_script_async(sid, path):
     try:
         req_file = path_obj / "requirements.txt"
         if req_file.exists():
-            logger.info(f"[{sid}] Installing requirements...")
             proc = await asyncio.create_subprocess_exec(
                 sys.executable, '-m', 'pip', 'install', '-r', str(req_file),
                 '--quiet', '--no-warn-script-location',
@@ -323,13 +328,6 @@ async def run_script_async(sid, path):
         logger.error(f"[{sid}] Error: {e}")
         return None, str(e)
 
-def kill_process(pid):
-    try: 
-        os.kill(int(pid), signal.SIGTERM)
-        return True
-    except: 
-        return False
-
 # ========== ВЕБ-СЕРВЕР ==========
 async def health_check(request):
     scripts = get_all_scripts()
@@ -352,102 +350,57 @@ async def web_status(request):
     premium = len([u for u in users if u.get('is_premium')])
     banned = len([u for u in users if u.get('banned')])
     
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Hosting Bot v{VERSION}</title>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-            body {{ font-family: Arial; margin: 20px; background: #f5f5f5; }}
-            .card {{ background: white; padding: 20px; border-radius: 10px; margin: 10px 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
-            .online {{ color: #4CAF50; }}
-            .stat {{ font-size: 24px; font-weight: bold; color: #2196F3; }}
-        </style>
-    </head>
-    <body>
-        <h1>🚀 Hosting Bot v{VERSION}</h1>
-        <div class="card">
-            <h2 class="online">● Online</h2>
-            <p>👥 Пользователей: <span class="stat">{len(users)}</span> (💎{premium} 🚫{banned})</p>
-            <p>📦 Хостов: <span class="stat">{len(scripts)}</span> (🟢{running} 🔴{len(scripts)-running})</p>
-        </div>
-    </body>
-    </html>
-    """
+    html = f"""<!DOCTYPE html><html><head><title>Hosting Bot v{VERSION}</title>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>body{{font-family:Arial;margin:20px;background:#f5f5f5}}.card{{background:white;padding:20px;border-radius:10px;margin:10px 0;box-shadow:0 2px 5px rgba(0,0,0,0.1)}}.online{{color:#4CAF50}}.stat{{font-size:24px;font-weight:bold;color:#2196F3}}</style></head>
+    <body><h1>🚀 Hosting Bot v{VERSION}</h1><div class="card"><h2 class="online">● Online</h2>
+    <p>👥 Пользователей: <span class="stat">{len(users)}</span> (💎{premium} 🚫{banned})</p>
+    <p>📦 Хостов: <span class="stat">{len(scripts)}</span> (🟢{running} 🔴{len(scripts)-running})</p></div></body></html>"""
     return web.Response(text=html, content_type='text/html')
 
-async def run_web_server():
+def run_web_server():
     app = web.Application()
     app.router.add_get('/', health_check)
     app.router.add_get('/ping', health_check)
     app.router.add_get('/status', web_status)
-    
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', PORT)
-    await site.start()
-    logger.info(f"🌐 Web server on port {PORT}")
-
-# ========== FSM ==========
-class UploadStates(StatesGroup):
-    waiting_file = State()
-
-class SupportStates(StatesGroup):
-    waiting_message = State()
-    in_chat = State()
-
-class BroadcastStates(StatesGroup):
-    waiting_message = State()
-
-class PromoCreateStates(StatesGroup):
-    waiting_code = State()
-    waiting_days = State()
-    waiting_uses = State()
-
-class AdminSubStates(StatesGroup):
-    waiting_user_id = State()
+    web.run_app(app, host='0.0.0.0', port=PORT)
 
 # ========== БОТ ==========
-bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-dp = Dispatcher(storage=MemoryStorage())
+bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
 bot_active = True
+
+# Состояния пользователей
+user_states = {}
+upload_waiting = set()
+broadcast_waiting = set()
+promo_creating = {}
+admin_waiting = {}
 
 # ========== КЛАВИАТУРЫ ==========
 def user_keyboard():
-    builder = ReplyKeyboardBuilder()
-    builder.row(KeyboardButton(text="📤 Загрузить"), KeyboardButton(text="💻 Хосты"))
-    builder.row(KeyboardButton(text="🛒 Тарифы"), KeyboardButton(text="💳 Баланс"))
-    builder.row(KeyboardButton(text="👤 Профиль"), KeyboardButton(text="🆘 Помощь"))
-    return builder.as_markup(resize_keyboard=True)
+    kb = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    kb.add(KeyboardButton("📤 Загрузить"), KeyboardButton("💻 Хосты"))
+    kb.add(KeyboardButton("🛒 Тарифы"), KeyboardButton("💳 Баланс"))
+    kb.add(KeyboardButton("👤 Профиль"), KeyboardButton("🆘 Помощь"))
+    return kb
 
 def admin_keyboard():
-    builder = ReplyKeyboardBuilder()
-    builder.row(KeyboardButton(text="👥 Пользователи"), KeyboardButton(text="📊 Статистика"))
-    builder.row(KeyboardButton(text="📨 Рассылка"), KeyboardButton(text="🎫 Промокод"))
-    builder.row(KeyboardButton(text="🎁 Выдать"), KeyboardButton(text="❌ Отозвать"))
-    builder.row(KeyboardButton(text="📦 Хосты"), KeyboardButton(text="💰 Баланс"))
-    builder.row(KeyboardButton(text="🛑 Стоп"), KeyboardButton(text="🟢 Старт"))
-    builder.row(KeyboardButton(text="👤 Юзер"), KeyboardButton(text="🆘 Помощь"))
-    return builder.as_markup(resize_keyboard=True)
-
-# ========== БЛОКИРОВКА ДОКУМЕНТОВ ==========
-@dp.message(F.document)
-async def block_docs(message: Message, state: FSMContext):
-    if await state.get_state() == UploadStates.waiting_file:
-        return
-    await message.answer("❌ Используйте кнопку «📤 Загрузить»!")
+    kb = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    kb.add(KeyboardButton("👥 Пользователи"), KeyboardButton("📊 Статистика"))
+    kb.add(KeyboardButton("📨 Рассылка"), KeyboardButton("🎫 Промокод"))
+    kb.add(KeyboardButton("🎁 Выдать"), KeyboardButton("❌ Отозвать"))
+    kb.add(KeyboardButton("📦 Хосты"), KeyboardButton("💰 Баланс"))
+    kb.add(KeyboardButton("🛑 Стоп"), KeyboardButton("🟢 Старт"))
+    kb.add(KeyboardButton("👤 Юзер"), KeyboardButton("🆘 Помощь"))
+    return kb
 
 # ========== СТАРТ ==========
-@dp.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext):
+@bot.message_handler(commands=['start'])
+def cmd_start(message):
     uid = message.from_user.id
     if not get_user(uid): 
         create_user(uid, message.from_user.username)
-        await message.answer(f"🎉 Добро пожаловать!\n🆓 Бесплатный тариф на {FREE_TRIAL_DAYS} дня!")
-    
-    await state.clear()
+        bot.send_message(uid, f"🎉 Добро пожаловать!\n🆓 Бесплатный тариф на {FREE_TRIAL_DAYS} дня!")
     
     if uid in ADMIN_IDS:
         scripts = get_all_scripts()
@@ -455,23 +408,21 @@ async def cmd_start(message: Message, state: FSMContext):
         users = get_all_users()
         premium = len([u for u in users if u.get('is_premium')])
         banned = len([u for u in users if u.get('banned')])
-        await message.answer(
-            f"👑 <b>АДМИН</b> | v{VERSION}\n"
-            f"👥 {len(users)} (💎{premium} 🚫{banned}) | 📦 {len(scripts)} | 🟢 {running}",
-            reply_markup=admin_keyboard()
-        )
+        bot.send_message(uid,
+            f"👑 <b>АДМИН</b> | v{VERSION}\n👥 {len(users)} (💎{premium} 🚫{banned}) | 📦 {len(scripts)} | 🟢 {running}",
+            reply_markup=admin_keyboard())
         return
     
     user = get_user(uid)
     if user and user.get('banned'):
-        return await message.answer("🚫 <b>ВЫ ЗАБАНЕНЫ!</b>")
+        bot.send_message(uid, "🚫 <b>ВЫ ЗАБАНЕНЫ!</b>")
+        return
     
     if not check_subscription(uid):
-        kb = InlineKeyboardBuilder()
-        kb.button(text="🛒 Тарифы от 29₽", callback_data="shop")
-        kb.button(text="🎫 Промокод", callback_data="promo")
-        kb.adjust(1)
-        await message.answer("❌ Доступ закрыт!\n💎 Тарифы от 29₽", reply_markup=kb.as_markup())
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton("🛒 Тарифы от 29₽", callback_data="shop"),
+               InlineKeyboardButton("🎫 Промокод", callback_data="promo"))
+        bot.send_message(uid, "❌ Доступ закрыт!\n💎 Тарифы от 29₽", reply_markup=kb)
         return
     
     scripts = get_user_scripts(uid)
@@ -479,51 +430,81 @@ async def cmd_start(message: Message, state: FSMContext):
     sub_info, days = get_subscription_info(uid)
     limits = get_user_limits(uid)
     
-    await message.answer(
+    bot.send_message(uid,
         f"🚀 <b>HOSTING</b>\n📋 {sub_info} | 📦 {len(scripts)}/{limits[0]} | 🟢 {running}",
-        reply_markup=user_keyboard()
-    )
+        reply_markup=user_keyboard())
+
+@bot.message_handler(commands=['admin'])
+def cmd_admin(message):
+    if message.from_user.id not in ADMIN_IDS: return
+    bot.send_message(message.chat.id, "👑 <b>Админ-панель</b>", reply_markup=admin_keyboard())
 
 # ========== ЗАГРУЗКА ФАЙЛА ==========
-@dp.message(F.text.in_(['📤 Загрузить', '📤 Загрузить файл']))
-async def upload_start(message: Message, state: FSMContext):
+@bot.message_handler(func=lambda m: m.text in ['📤 Загрузить', '📤 Загрузить файл'])
+def upload_start(message):
     uid = message.from_user.id
     if not check_subscription(uid):
-        return await message.answer("❌ Нет доступа!")
+        bot.send_message(uid, "❌ Нет доступа!")
+        return
     
     mx, size_mb = get_user_limits(uid)
     current = count_user_scripts(uid)
     if current >= mx:
-        return await message.answer(f"❌ Лимит! {current}/{mx}")
+        bot.send_message(uid, f"❌ Лимит! {current}/{mx}")
+        return
     
-    await state.set_state(UploadStates.waiting_file)
-    await message.answer(f"📤 Отправьте .py или .zip файл (до {size_mb}МБ)\n❌ /cancel для отмены")
+    upload_waiting.add(uid)
+    bot.send_message(uid, f"📤 Отправьте .py или .zip файл (до {size_mb}МБ)\n/cancel для отмены")
 
-@dp.message(UploadStates.waiting_file, F.document)
-async def upload_process(message: Message, state: FSMContext):
+@bot.message_handler(commands=['cancel'])
+def cmd_cancel(message):
     uid = message.from_user.id
+    upload_waiting.discard(uid)
+    broadcast_waiting.discard(uid)
+    admin_waiting.pop(uid, None)
+    bot.send_message(uid, "❌ Отменено", reply_markup=user_keyboard())
+
+@bot.message_handler(content_types=['document'])
+def handle_document(message):
+    uid = message.from_user.id
+    
+    # Блокируем прямые документы
+    if uid not in upload_waiting:
+        try:
+            bot.reply_to(message, "❌ Используйте кнопку «📤 Загрузить»!")
+        except:
+            pass
+        return
+    
     doc = message.document
     fn = doc.file_name
     fs = doc.file_size
     _, mx = get_user_limits(uid)
     
     if not fn.endswith(('.py', '.zip')):
-        await state.clear()
-        return await message.answer("❌ Только .py или .zip!")
+        upload_waiting.discard(uid)
+        bot.send_message(uid, "❌ Только .py или .zip!")
+        return
     
     if fs > mx * 1024 * 1024:
-        await state.clear()
-        return await message.answer(f"❌ Макс {mx}МБ!")
+        upload_waiting.discard(uid)
+        bot.send_message(uid, f"❌ Макс {mx}МБ!")
+        return
     
-    status_msg = await message.answer("📥 Скачивание файла...")
+    status_msg = bot.send_message(uid, "📥 Скачивание файла...")
     
     tmp_dir = TEMP_DIR / str(uid) / uuid.uuid4().hex[:8]
     tmp_dir.mkdir(parents=True, exist_ok=True)
     tmp_file = tmp_dir / fn
     
     try:
-        await bot.download(doc, destination=tmp_file)
-        await status_msg.edit_text("📦 Обработка файла...")
+        file_info = bot.get_file(doc.file_id)
+        downloaded = bot.download_file(file_info.file_path)
+        
+        with open(tmp_file, 'wb') as f:
+            f.write(downloaded)
+        
+        bot.edit_message_text("📦 Обработка файла...", uid, status_msg.message_id)
         
         file_data = tmp_file.read_bytes()
         original_path = save_user_file(uid, fn, file_data)
@@ -533,15 +514,15 @@ async def upload_process(message: Message, state: FSMContext):
         script_dir.mkdir(parents=True, exist_ok=True)
         
         if fn.endswith('.zip'):
-            await status_msg.edit_text("📦 Распаковка архива...")
+            bot.edit_message_text("📦 Распаковка архива...", uid, status_msg.message_id)
             with zipfile.ZipFile(tmp_file) as z:
                 z.extractall(script_dir)
             
             py_files = list(script_dir.rglob("*.py"))
             if not py_files:
                 shutil.rmtree(script_dir, ignore_errors=True)
-                await status_msg.edit_text("❌ В архиве нет .py файлов!")
-                await state.clear()
+                bot.edit_message_text("❌ В архиве нет .py файлов!", uid, status_msg.message_id)
+                upload_waiting.discard(uid)
                 return
             
             total_size = sum(f.stat().st_size for f in script_dir.rglob('*') if f.is_file())
@@ -549,781 +530,650 @@ async def upload_process(message: Message, state: FSMContext):
             shutil.copy2(str(tmp_file), str(script_dir / fn))
             total_size = fs
         
-        await status_msg.edit_text("⚡ Запуск скрипта...")
+        bot.edit_message_text("⚡ Запуск скрипта...", uid, status_msg.message_id)
         logger.info(f"User {uid} starting script {sid}: {fn}")
         
-        pid, error = await run_script_async(sid, str(script_dir))
+        pid, error = run_script_sync(sid, str(script_dir))
         
         if error:
             logger.error(f"Script {sid} error: {error}")
-            await status_msg.edit_text(f"❌ Ошибка запуска:\n{error[:300]}")
+            bot.edit_message_text(f"❌ Ошибка запуска:\n{error[:300]}", uid, status_msg.message_id)
             shutil.rmtree(script_dir, ignore_errors=True)
-            await state.clear()
+            upload_waiting.discard(uid)
             return
         
         add_script(sid, uid, fn, str(script_dir), total_size, original_path)
         
-        logger.info(f"Script {sid} started with PID {pid}")
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton("📥 Скачать", callback_data=f"dl:{sid}"),
+               InlineKeyboardButton("⏹ Стоп", callback_data=f"sc:run:{sid}"))
+        kb.add(InlineKeyboardButton("💻 Хосты", callback_data="hosts"))
         
-        kb = InlineKeyboardBuilder()
-        kb.button(text="📥 Скачать файл", callback_data=f"dl:{sid}")
-        kb.button(text="⏹ Остановить", callback_data=f"sc:run:{sid}")
-        kb.button(text="💻 Мои хосты", callback_data="hosts")
-        kb.adjust(2, 1)
-        
-        await status_msg.edit_text(
-            f"✅ <b>ХОСТ ЗАПУЩЕН!</b>\n\n"
-            f"📄 <code>{fn}</code>\n"
-            f"🆔 <code>{sid}</code>\n"
-            f"📦 {total_size/1024/1024:.1f} МБ\n"
-            f"⚡ Статус: 🟢 Запущен\n"
-            f"🔢 PID: <code>{pid}</code>",
-            reply_markup=kb.as_markup()
-        )
+        bot.edit_message_text(
+            f"✅ <b>ХОСТ ЗАПУЩЕН!</b>\n\n📄 <code>{fn}</code>\n🆔 <code>{sid}</code>\n📦 {total_size/1024/1024:.1f} МБ\n⚡ 🟢 Запущен\nPID: <code>{pid}</code>",
+            uid, status_msg.message_id, reply_markup=kb)
         
     except Exception as e:
         logger.error(f"Upload error: {e}")
-        await status_msg.edit_text(f"❌ Ошибка: {str(e)[:200]}")
+        bot.edit_message_text(f"❌ Ошибка: {str(e)[:200]}", uid, status_msg.message_id)
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
-    
-    await state.clear()
-
-@dp.message(UploadStates.waiting_file)
-async def upload_invalid(message: Message, state: FSMContext):
-    if message.text and message.text == '/cancel':
-        await state.clear()
-        return await message.answer("❌ Отменено")
-    await message.answer("❌ Отправьте .py или .zip файл!")
+        upload_waiting.discard(uid)
 
 # ========== ХОСТЫ ==========
-@dp.message(F.text.in_(['💻 Хосты', '💻 Мои хосты']))
-async def show_hosts(message: Message):
+@bot.message_handler(func=lambda m: m.text in ['💻 Хосты', '💻 Мои хосты'])
+def show_hosts(message):
     uid = message.from_user.id
     scripts = get_user_scripts(uid)
     
     if not scripts:
-        kb = InlineKeyboardBuilder()
-        kb.button(text="📤 Загрузить", callback_data="upload")
-        return await message.answer("😔 Нет хостов", reply_markup=kb.as_markup())
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton("📤 Загрузить", callback_data="upload"))
+        bot.send_message(uid, "😔 Нет хостов", reply_markup=kb)
+        return
     
     text = f"💻 <b>ХОСТЫ ({len(scripts)})</b>\n\n"
-    kb = InlineKeyboardBuilder()
+    kb = InlineKeyboardMarkup()
     
     for s in scripts:
         st = "🟢" if s['status']=='running' else "🔴"
         sz = (s['size'] or 0) / 1024 / 1024
         text += f"{st} <b>{s['name']}</b> | {sz:.1f}МБ | <code>{s['id']}</code>\n"
         
-        kb.button(text="⏹" if s['status']=='running' else "▶️", callback_data=f"sc:run:{s['id']}")
-        kb.button(text="📥", callback_data=f"dl:{s['id']}")
-        kb.button(text="🗑", callback_data=f"sc:del:{s['id']}")
+        kb.add(
+            InlineKeyboardButton("⏹" if s['status']=='running' else "▶️", callback_data=f"sc:run:{s['id']}"),
+            InlineKeyboardButton("📥", callback_data=f"dl:{s['id']}"),
+            InlineKeyboardButton("🗑", callback_data=f"sc:del:{s['id']}")
+        )
     
-    kb.button(text="📤 Загрузить", callback_data="upload")
-    kb.adjust(3, 1)
-    await message.answer(text, reply_markup=kb.as_markup())
-
-@dp.callback_query(F.data == "upload")
-async def cb_upload(callback: CallbackQuery, state: FSMContext):
-    await upload_start(callback.message, state)
-    await callback.answer()
-
-@dp.callback_query(F.data == "hosts")
-async def cb_hosts(callback: CallbackQuery):
-    await show_hosts(callback.message)
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("sc:"))
-async def script_action(callback: CallbackQuery):
-    _, action, sid = callback.data.split(":")
-    uid = callback.from_user.id
-    s = get_script(sid)
-    if not s or s['user_id'] != uid:
-        return await callback.answer("❌")
-    
-    if action == "run":
-        if s['status'] == 'running':
-            if s.get('container_id'): kill_process(s['container_id'])
-            update_script_status(sid, 'stopped')
-            await callback.answer("⏹ Остановлен")
-        else:
-            pid, err = await run_script_async(sid, s['path'])
-            if pid:
-                update_script_status(sid, 'running', pid)
-                await callback.answer("▶️ Запущен")
-            else:
-                await callback.answer(f"❌ {err[:50]}")
-    elif action == "del":
-        kb = InlineKeyboardBuilder()
-        kb.button(text="✅ Да", callback_data=f"sc:confirm:{sid}")
-        kb.button(text="❌ Нет", callback_data="hosts")
-        await callback.message.edit_text(f"🗑 Удалить <b>{s['name']}</b>?", reply_markup=kb.as_markup())
-        return
-    elif action == "confirm":
-        if s.get('container_id'): kill_process(s['container_id'])
-        if s.get('original_file') and os.path.exists(s['original_file']):
-            os.unlink(s['original_file'])
-        delete_script(sid, uid)
-        shutil.rmtree(s['path'], ignore_errors=True)
-        for lf in [f"{sid}.log", f"{sid}_install.log"]:
-            p = LOGS_DIR / lf
-            if p.exists(): p.unlink()
-        await callback.answer("✅ Удалён")
-    
-    await show_hosts(callback.message)
-
-@dp.callback_query(F.data.startswith("dl:"))
-async def download_file(callback: CallbackQuery):
-    sid = callback.data.split(":")[1]
-    s = get_script(sid)
-    if not s: return await callback.answer("❌")
-    
-    if s.get('original_file') and os.path.exists(s['original_file']):
-        await callback.message.answer_document(FSInputFile(s['original_file']))
-    else:
-        zp = TEMP_DIR / f"{sid}.zip"
-        with zipfile.ZipFile(zp, 'w') as zf:
-            for f in Path(s['path']).rglob('*'):
-                if f.is_file(): zf.write(f, f.relative_to(s['path']))
-        await callback.message.answer_document(FSInputFile(zp))
-        zp.unlink()
-    await callback.answer("✅")
+    kb.add(InlineKeyboardButton("📤 Загрузить", callback_data="upload"))
+    bot.send_message(uid, text, reply_markup=kb)
 
 # ========== ТАРИФЫ ==========
-@dp.message(F.text.in_(['🛒 Тарифы', '🛒 Магазин']))
-async def shop(message: Message):
-    kb = InlineKeyboardBuilder()
+@bot.message_handler(func=lambda m: m.text in ['🛒 Тарифы', '🛒 Магазин'])
+def shop(message):
+    kb = InlineKeyboardMarkup()
     for tid, t in TIER_INFO.items():
-        kb.button(text=f"{t['name']} | {t['cpu']} {t['ram']} | {t['price_7d']}₽", callback_data=f"tier:{tid}")
-    kb.adjust(1)
-    await message.answer("<b>ТАРИФЫ</b>\n\n🌱 29₽ | ⚡ 49₽ | 👑 79₽", reply_markup=kb.as_markup())
-
-@dp.callback_query(F.data == "shop")
-async def cb_shop(callback: CallbackQuery):
-    await shop(callback.message)
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("tier:"))
-async def select_tier(callback: CallbackQuery, state: FSMContext):
-    tier = callback.data.split(":")[1]
-    await state.update_data(tier=tier)
-    
-    kb = InlineKeyboardBuilder()
-    for d, n in DAYS_NAMES.items():
-        kb.button(text=f"{n} - {calc_price(tier, d)}₽", callback_data=f"days:{d}")
-    kb.button(text="◀️ Назад", callback_data="shop")
-    kb.adjust(1)
-    
-    t = TIER_INFO[tier]
-    await callback.message.edit_text(
-        f"{t['name']}\n├ CPU: {t['cpu']}\n├ RAM: {t['ram']}\n├ Storage: {t['storage']}\n└ Скриптов: {t['scripts']}\n\n📅 Срок:",
-        reply_markup=kb.as_markup()
-    )
-
-@dp.callback_query(F.data.startswith("days:"))
-async def select_days(callback: CallbackQuery, state: FSMContext):
-    days = callback.data.split(":")[1]
-    data = await state.get_data()
-    tier = data.get('tier')
-    total = calc_price(tier, days)
-    uid = callback.from_user.id
-    user = get_user(uid)
-    bal = user.get('balance', 0) if user else 0
-    
-    kb = InlineKeyboardBuilder()
-    if bal >= total:
-        kb.button(text=f"✅ Оплатить {total}₽", callback_data=f"pay:{tier}:{days}")
-    else:
-        kb.button(text=f"❌ {total}₽ (есть {bal}₽)", callback_data="bal")
-    kb.button(text="💳 Пополнить", callback_data="bal")
-    kb.button(text="◀️ Назад", callback_data=f"tier:{tier}")
-    kb.adjust(1)
-    
-    await callback.message.edit_text(
-        f"🧾 <b>ЗАКАЗ</b>\n\n{TIER_INFO[tier]['name']}\n📅 {DAYS_NAMES[days]}\n💰 {total}₽\n💳 Баланс: {bal}₽",
-        reply_markup=kb.as_markup()
-    )
-
-@dp.callback_query(F.data.startswith("pay:"))
-async def pay(callback: CallbackQuery, state: FSMContext):
-    _, tier, days = callback.data.split(":")
-    total = calc_price(tier, days)
-    uid = callback.from_user.id
-    user = get_user(uid)
-    
-    if user.get('balance', 0) < total:
-        return await callback.answer("❌ Мало средств")
-    
-    with get_db() as conn:
-        conn.execute('UPDATE users SET balance=balance-? WHERE user_id=?', (total, uid))
-    
-    d = 7 if days=='7' else 30 if days=='30' else 90
-    set_subscription(uid, 'pro', d, tier)
-    await callback.message.edit_text(f"✅ <b>Куплено!</b>\n{TIER_INFO[tier]['name']}\n📅 {DAYS_NAMES[days]}\n💰 {total}₽")
-    await state.clear()
+        kb.add(InlineKeyboardButton(f"{t['name']} | {t['cpu']} {t['ram']} | {t['price_7d']}₽", callback_data=f"tier:{tid}"))
+    bot.send_message(message.chat.id, "<b>ТАРИФЫ</b>\n\n🌱 29₽ | ⚡ 49₽ | 👑 79₽", reply_markup=kb)
 
 # ========== БАЛАНС ==========
-@dp.message(F.text.in_(['💳 Баланс', '💳 Пополнить']))
-async def balance(message: Message):
+@bot.message_handler(func=lambda m: m.text in ['💳 Баланс', '💳 Пополнить'])
+def balance(message):
     uid = message.from_user.id
     user = get_user(uid)
     bal = user.get('balance', 0) if user else 0
     
-    kb = InlineKeyboardBuilder()
-    kb.button(text="💳 Карта СБЕР", callback_data="dep_card")
-    kb.button(text="⭐ Telegram Stars", callback_data="dep_stars")
-    kb.adjust(1)
-    await message.answer(f"💳 <b>Баланс: {bal:.0f}₽</b>\n\nВыберите способ:", reply_markup=kb.as_markup())
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("💳 Карта СБЕР", callback_data="dep_card"),
+           InlineKeyboardButton("⭐ Telegram Stars", callback_data="dep_stars"))
+    bot.send_message(uid, f"💳 <b>Баланс: {bal:.0f}₽</b>\n\nВыберите способ:", reply_markup=kb)
 
-@dp.callback_query(F.data == "dep_card")
-async def dep_card(callback: CallbackQuery):
-    await callback.message.answer("💳 <b>Оплата</b>\n🏦 СБЕР\n💳 <code>2202206714879132</code>\n📸 Отправьте скриншот")
-    await callback.answer()
-
-@dp.callback_query(F.data == "dep_stars")
-async def dep_stars(callback: CallbackQuery):
-    await callback.message.answer("⭐ Отправьте количество звезд (мин 50):")
-    await callback.answer()
-
-@dp.callback_query(F.data == "bal")
-async def cb_bal(callback: CallbackQuery):
-    await balance(callback.message)
-    await callback.answer()
-
-@dp.message(F.photo)
-async def screenshot(message: Message):
+# ========== ПРОФИЛЬ ==========
+@bot.message_handler(func=lambda m: m.text == '👤 Профиль')
+def profile(message):
     uid = message.from_user.id
-    for aid in ADMIN_IDS:
-        kb = InlineKeyboardBuilder()
-        kb.button(text="✅ +100₽", callback_data=f"app_bal|{uid}|100")
-        kb.button(text="✅ +200₽", callback_data=f"app_bal|{uid}|200")
-        kb.button(text="✅ +500₽", callback_data=f"app_bal|{uid}|500")
-        kb.button(text="❌ Отклонить", callback_data=f"rej|{uid}")
-        kb.adjust(2)
-        try:
-            await bot.send_photo(aid, message.photo[-1].file_id, 
-                               caption=f"📸 Оплата от {uid}", reply_markup=kb.as_markup())
-        except: pass
-    await message.answer("✅ Скриншот отправлен!")
-
-@dp.callback_query(F.data.startswith("app_bal|"))
-async def approve_payment(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    _, uid, amount = callback.data.split("|")
-    uid, amount = int(uid), float(amount)
-    with get_db() as conn:
-        conn.execute('UPDATE users SET balance=balance+? WHERE user_id=?', (amount, uid))
-    await callback.message.edit_caption(f"✅ +{amount}₽")
-    try: await bot.send_message(uid, f"✅ Баланс +{amount}₽")
-    except: pass
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("rej|"))
-async def reject_payment(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    uid = int(callback.data.split("|")[1])
-    await callback.message.edit_caption("❌ Отклонено")
-    try: await bot.send_message(uid, "❌ Отклонено")
-    except: pass
-    await callback.answer()
-
-# ========== ПРОМОКОДЫ ==========
-@dp.callback_query(F.data == "promo")
-async def cb_promo(callback: CallbackQuery):
-    await callback.message.answer("🎁 Отправьте промокод:")
-    await callback.answer()
-
-@dp.message(F.text.regexp(r'^[A-Za-z0-9]+$'))
-async def promo_activate(message: Message):
-    uid = message.from_user.id
-    code = message.text.strip().upper()
-    success, msg = activate_promo(uid, code)
-    if success: await message.answer(f"✅ {msg}")
-
-@dp.message(F.text == "🎫 Промокод")
-async def admin_promo(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMIN_IDS: return
-    await state.set_state(PromoCreateStates.waiting_code)
-    await message.answer("🎫 Введите код промокода:")
-
-@dp.message(PromoCreateStates.waiting_code)
-async def promo_code(message: Message, state: FSMContext):
-    code = message.text.strip().upper()
-    await state.update_data(promo_code=code)
-    await state.set_state(PromoCreateStates.waiting_days)
-    kb = InlineKeyboardBuilder()
-    kb.button(text="7 дней", callback_data="pdays:7")
-    kb.button(text="30 дней", callback_data="pdays:30")
-    kb.button(text="90 дней", callback_data="pdays:90")
-    kb.adjust(1)
-    await message.answer(f"Код: <b>{code}</b>\n📅 Срок:", reply_markup=kb.as_markup())
-
-@dp.callback_query(F.data.startswith("pdays:"))
-async def promo_days(callback: CallbackQuery, state: FSMContext):
-    days = int(callback.data.split(":")[1])
-    await state.update_data(promo_days=days)
-    await state.set_state(PromoCreateStates.waiting_uses)
-    await callback.message.edit_text(f"📅 {days} дней\n👥 Макс. использований:")
-    await callback.answer()
-
-@dp.message(PromoCreateStates.waiting_uses)
-async def promo_uses(message: Message, state: FSMContext):
-    try: uses = int(message.text)
-    except: return await message.answer("❌ Число!")
-    data = await state.get_data()
-    create_promo(data['promo_code'], 'pro', data['promo_days'], uses)
-    await message.answer(f"✅ Промокод <b>{data['promo_code']}</b>\n📅 {data['promo_days']}дн | 👥 {uses}")
-    await state.clear()
+    u = get_user(uid)
+    if not u: return bot.send_message(uid, "❌ /start")
+    
+    sub_info, days = get_subscription_info(uid)
+    scr = get_user_scripts(uid)
+    mx, sz = get_user_limits(uid)
+    
+    text = f"👤 <b>Профиль</b>\n🆔 {uid}\n💰 {u.get('balance',0):.0f}₽\n📋 {sub_info}\n📦 {len(scr)}/{mx}\n📊 {sz}МБ"
+    if days: text += f"\n⏳ {days}дн"
+    
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("🎫 Промокод", callback_data="promo"),
+           InlineKeyboardButton("💳 Пополнить", callback_data="bal"))
+    bot.send_message(uid, text, reply_markup=kb)
 
 # ========== ПОДДЕРЖКА ==========
-@dp.message(F.text.in_(['🆘 Помощь', '🆘 Поддержка']))
-async def support(message: Message):
-    kb = InlineKeyboardBuilder()
-    kb.button(text="💬 Чат с админом", callback_data="chat")
-    kb.button(text="📞 Telegram", url=SUPPORT_URL)
-    kb.adjust(1)
-    await message.answer("🆘 <b>Поддержка</b>", reply_markup=kb.as_markup())
-
-@dp.callback_query(F.data == "chat")
-async def chat_start(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(SupportStates.waiting_message)
-    await callback.message.answer("💬 Отправьте сообщение:")
-    await callback.answer()
-
-@dp.message(SupportStates.waiting_message)
-async def chat_send(message: Message, state: FSMContext):
-    if message.text == '/cancel': await state.clear(); return await message.answer("❌")
-    uid = message.from_user.id
-    user = get_user(uid)
-    username = f"@{user.get('username', uid)}" if user else str(uid)
-    for aid in ADMIN_IDS:
-        kb = InlineKeyboardBuilder()
-        kb.button(text="✉️ Ответить", callback_data=f"reply:{uid}")
-        try:
-            if message.text:
-                await bot.send_message(aid, f"📩 <b>{username}</b>\n🆔 {uid}\n\n{message.text}", reply_markup=kb.as_markup())
-            elif message.photo:
-                await bot.send_photo(aid, message.photo[-1].file_id, caption=f"📩 {username}\n🆔 {uid}", reply_markup=kb.as_markup())
-        except: pass
-    await state.clear()
-    await message.answer("✅ Отправлено!")
-
-@dp.callback_query(F.data.startswith("reply:"))
-async def reply_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMIN_IDS: return
-    uid = int(callback.data.split(":")[1])
-    await state.set_state(SupportStates.in_chat)
-    await state.update_data(reply_to=uid)
-    await callback.message.answer(f"✏️ Ответ для {uid}:")
-    await callback.answer()
-
-@dp.message(SupportStates.in_chat)
-async def reply_send(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMIN_IDS: return
-    data = await state.get_data()
-    uid = data.get('reply_to')
-    try:
-        if message.text: await bot.send_message(uid, f"📩 <b>Ответ админа:</b>\n\n{message.text}")
-        elif message.photo: await bot.send_photo(uid, message.photo[-1].file_id, caption="📩 Ответ админа")
-        await message.answer("✅")
-    except: await message.answer("❌")
-    await state.clear()
+@bot.message_handler(func=lambda m: m.text in ['🆘 Помощь', '🆘 Поддержка'])
+def support(message):
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("💬 Чат с админом", callback_data="chat"),
+           InlineKeyboardButton("📞 Telegram", url=SUPPORT_URL))
+    bot.send_message(message.chat.id, "🆘 <b>Поддержка</b>", reply_markup=kb)
 
 # ========== РАССЫЛКА ==========
-@dp.message(F.text == "📨 Рассылка")
-async def broadcast_start(message: Message, state: FSMContext):
+@bot.message_handler(func=lambda m: m.text == '📨 Рассылка')
+def broadcast_start(message):
     if message.from_user.id not in ADMIN_IDS: return
-    await state.set_state(BroadcastStates.waiting_message)
-    await message.answer("📨 Отправьте сообщение для рассылки:")
+    broadcast_waiting.add(message.from_user.id)
+    bot.send_message(message.chat.id, "📨 Отправьте сообщение для рассылки:")
 
-@dp.message(BroadcastStates.waiting_message)
-async def broadcast_send(message: Message, state: FSMContext):
+@bot.message_handler(func=lambda m: m.from_user.id in broadcast_waiting)
+def broadcast_send(message):
     if message.from_user.id not in ADMIN_IDS: return
+    broadcast_waiting.discard(message.from_user.id)
+    
     users = get_all_users()
     sent, err = 0, 0
-    msg = await message.answer(f"📨 0/{len(users)}")
-    for i, u in enumerate(users):
+    
+    for u in users:
         try:
-            if message.text: await bot.send_message(u['user_id'], f"📢 <b>Рассылка</b>\n\n{message.text}")
-            elif message.photo: await bot.send_photo(u['user_id'], message.photo[-1].file_id, caption="📢 Рассылка")
+            bot.send_message(u['user_id'], f"📢 <b>Рассылка</b>\n\n{message.text}")
             sent += 1
         except: err += 1
-        if i % 10 == 0: await msg.edit_text(f"📨 {i}/{len(users)}")
-        await asyncio.sleep(0.05)
-    await msg.edit_text(f"✅ {sent} | ❌ {err}")
-    await state.clear()
+        time.sleep(0.05)
+    
+    bot.send_message(message.chat.id, f"✅ Отправлено: {sent}\n❌ Ошибок: {err}")
 
 # ========== СТОП/СТАРТ ==========
-@dp.message(F.text.in_(['🛑 Стоп', '🛑 Стоп бот']))
-async def stop_bot(message: Message):
+@bot.message_handler(func=lambda m: m.text in ['🛑 Стоп', '🛑 Стоп бот'])
+def stop_bot(message):
     if message.from_user.id not in ADMIN_IDS: return
-    global bot_active; bot_active = False
+    global bot_active
+    bot_active = False
     stopped = 0
     for s in get_all_scripts():
         if s['status'] == 'running':
             if s.get('container_id'): kill_process(s['container_id'])
             update_script_status(s['id'], 'stopped')
             stopped += 1
-    await message.answer(f"🔴 Стоп! ⏹ {stopped}")
+    bot.send_message(message.chat.id, f"🔴 Стоп! ⏹ {stopped}")
 
-@dp.message(F.text.in_(['🟢 Старт', '🟢 Старт бот']))
-async def start_bot(message: Message):
+@bot.message_handler(func=lambda m: m.text in ['🟢 Старт', '🟢 Старт бот'])
+def start_bot(message):
     if message.from_user.id not in ADMIN_IDS: return
-    global bot_active; bot_active = True
-    started, err = 0, 0
-    for s in get_all_scripts():
-        try:
-            if os.path.exists(s['path']):
-                pid, e = await run_script_async(s['id'], s['path'])
-                if pid: update_script_status(s['id'], 'running', pid); started += 1
-                else: err += 1
-        except: err += 1
-    await message.answer(f"🟢 Старт! ▶️ {started} | ❌ {err}")
+    global bot_active
+    bot_active = True
+    bot.send_message(message.chat.id, "🟢 Старт!")
 
-# ========== АДМИН: ПОЛЬЗОВАТЕЛИ ==========
-@dp.message(F.text == "👥 Пользователи")
-async def admin_users_list(message: Message):
-    if message.from_user.id not in ADMIN_IDS: return
-    users = get_all_users()
-    if not users: return await message.answer("Нет")
-    kb = InlineKeyboardBuilder()
-    for u in users[:30]:
-        sub = "💎" if u.get('is_premium') else "🚫" if u.get('banned') else "🆓"
-        kb.button(text=f"{sub} {u['user_id']} | {u.get('username','Нет')}", callback_data=f"auser:{u['user_id']}")
-    kb.button(text="🔍 Поиск", callback_data="search_user")
-    kb.adjust(1)
-    await message.answer(f"👥 <b>ПОЛЬЗОВАТЕЛИ ({len(users)})</b>", reply_markup=kb.as_markup())
-
-@dp.callback_query(F.data == "search_user")
-async def search_user(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMIN_IDS: return
-    await state.set_state(AdminSubStates.waiting_user_id)
-    await state.update_data(admin_action='manage_user')
-    await callback.message.answer("🔍 ID:")
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("auser:"))
-async def admin_user_manage(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    uid = int(callback.data.split(":")[1])
-    user = get_user(uid)
-    if not user: return await callback.answer("❌")
-    scripts = get_user_scripts(uid)
-    running = len([s for s in scripts if s['status']=='running'])
-    sub_info, days = get_subscription_info(uid)
-    is_banned = user.get('banned', 0)
-    text = f"👤 <b>user{uid}</b>\n@{user.get('username','Нет')}\n💰 {user.get('balance',0):.0f}₽\n📋 {sub_info}\n📦 {len(scripts)} (🟢{running})"
-    if days: text += f"\n⏳ {days}дн"
-    if is_banned: text += "\n🚫 ЗАБАНЕН"
-    kb = InlineKeyboardBuilder()
-    kb.button(text="📦 Хосты", callback_data=f"auser_hosts:{uid}")
-    kb.button(text="📥 Скачать", callback_data=f"auser_download:{uid}")
-    kb.button(text="🎁 Выдать", callback_data=f"auser_give:{uid}")
-    kb.button(text="❌ Отозвать", callback_data=f"auser_remove:{uid}")
-    kb.button(text="💰 Баланс", callback_data=f"auser_balance:{uid}")
-    kb.button(text="🟢 Разбанить" if is_banned else "🚫 Забанить", callback_data=f"auser_unban:{uid}" if is_banned else f"auser_ban:{uid}")
-    kb.button(text="🗑 Удалить хосты", callback_data=f"auser_delall:{uid}")
-    kb.button(text="◀️ Назад", callback_data="admin_users_list")
-    kb.adjust(1)
-    await callback.message.edit_text(text, reply_markup=kb.as_markup())
-
-@dp.callback_query(F.data == "admin_users_list")
-async def back_to_users(callback: CallbackQuery):
-    await admin_users_list(callback.message)
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("auser_hosts:"))
-async def admin_view_user_hosts(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    uid = int(callback.data.split(":")[1])
-    scripts = get_user_scripts(uid)
-    if not scripts: return await callback.answer("Нет")
-    text = f"📦 <b>Хосты user{uid}</b>\n\n"
-    kb = InlineKeyboardBuilder()
-    for s in scripts:
-        st = "🟢" if s['status']=='running' else "🔴"
-        sz = (s['size'] or 0) / 1024 / 1024
-        text += f"{st} <b>{s['name']}</b> | {sz:.1f}МБ\n"
-        kb.button(text="⏹" if s['status']=='running' else "▶️", callback_data=f"asc:run:{s['id']}")
-        kb.button(text="📥", callback_data=f"dl:{s['id']}")
-        kb.button(text="🗑", callback_data=f"asc:del:{s['id']}")
-    kb.button(text="◀️", callback_data=f"auser:{uid}")
-    kb.adjust(3, 1)
-    await callback.message.edit_text(text, reply_markup=kb.as_markup())
-
-@dp.callback_query(F.data.startswith("asc:"))
-async def admin_script_action(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    _, action, sid = callback.data.split(":")
-    s = get_script(sid)
-    if not s: return await callback.answer("❌")
-    if action == "run":
-        if s['status'] == 'running':
-            if s.get('container_id'): kill_process(s['container_id'])
-            update_script_status(sid, 'stopped')
-        else:
-            pid, err = await run_script_async(sid, s['path'])
-            if pid: update_script_status(sid, 'running', pid)
-    elif action == "del":
-        if s.get('container_id'): kill_process(s['container_id'])
-        if s.get('original_file') and os.path.exists(s['original_file']): os.unlink(s['original_file'])
-        delete_script(sid)
-        shutil.rmtree(s['path'], ignore_errors=True)
-        for lf in [f"{sid}.log", f"{sid}_install.log"]:
-            if (LOGS_DIR/lf).exists(): (LOGS_DIR/lf).unlink()
-    await admin_view_user_hosts(callback.message)
-
-@dp.callback_query(F.data.startswith("auser_download:"))
-async def admin_download_user_files(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    uid = int(callback.data.split(":")[1])
-    scripts = get_user_scripts(uid)
-    if not scripts: return await callback.answer("Нет")
-    zp = TEMP_DIR / f"user_{uid}.zip"
-    with zipfile.ZipFile(zp, 'w') as zf:
-        for s in scripts:
-            if s.get('original_file') and os.path.exists(s['original_file']):
-                zf.write(s['original_file'], s['name'])
-            elif os.path.exists(s['path']):
-                for f in Path(s['path']).rglob('*'):
-                    if f.is_file(): zf.write(f, f"{s['id']}/{f.relative_to(s['path'])}")
-    await callback.message.answer_document(FSInputFile(zp), caption=f"📦 user{uid}")
-    zp.unlink()
-    await callback.answer("✅")
-
-@dp.callback_query(F.data.startswith("auser_give:"))
-async def admin_quick_give(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    uid = int(callback.data.split(":")[1])
-    kb = InlineKeyboardBuilder()
-    for tid, t in TIER_INFO.items():
-        kb.button(text=f"{t['name']} 30дн", callback_data=f"agive:{uid}:{tid}")
-    kb.button(text="◀️", callback_data=f"auser:{uid}")
-    kb.adjust(1)
-    await callback.message.edit_text(f"🎁 Выдать user{uid}", reply_markup=kb.as_markup())
-
-@dp.callback_query(F.data.startswith("auser_remove:"))
-async def admin_quick_remove(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    uid = int(callback.data.split(":")[1])
-    kb = InlineKeyboardBuilder()
-    kb.button(text="✅ Да", callback_data=f"auser_remove_confirm:{uid}")
-    kb.button(text="❌ Нет", callback_data=f"auser:{uid}")
-    kb.adjust(2)
-    await callback.message.edit_text(f"⚠️ Отозвать у user{uid}?", reply_markup=kb.as_markup())
-
-@dp.callback_query(F.data.startswith("auser_remove_confirm:"))
-async def admin_remove_confirm(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    uid = int(callback.data.split(":")[1])
-    remove_subscription(uid)
-    await callback.message.edit_text(f"✅ Отозвано у {uid}")
-    try: await bot.send_message(uid, "⚠️ Подписка отозвана")
-    except: pass
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("auser_balance:"))
-async def admin_change_balance(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMIN_IDS: return
-    uid = int(callback.data.split(":")[1])
-    user = get_user(uid)
-    await state.update_data(admin_action='change_balance', target_uid=uid)
-    await state.set_state(AdminSubStates.waiting_user_id)
-    await callback.message.answer(f"💰 user{uid}: {user.get('balance',0):.0f}₽\nСумма (+/-):")
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("auser_ban:"))
-async def admin_ban(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    uid = int(callback.data.split(":")[1])
-    ban_user(uid)
-    for s in get_user_scripts(uid):
-        if s.get('container_id'): kill_process(s['container_id'])
-        update_script_status(s['id'], 'stopped')
-    await callback.message.edit_text(f"🚫 user{uid} забанен")
-    try: await bot.send_message(uid, "🚫 Вы забанены!")
-    except: pass
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("auser_unban:"))
-async def admin_unban(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    uid = int(callback.data.split(":")[1])
-    unban_user(uid)
-    await callback.message.edit_text(f"🟢 user{uid} разбанен")
-    try: await bot.send_message(uid, "✅ Вы разбанены!")
-    except: pass
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("auser_delall:"))
-async def admin_delall(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    uid = int(callback.data.split(":")[1])
-    scripts = get_user_scripts(uid)
-    kb = InlineKeyboardBuilder()
-    kb.button(text="✅ Да", callback_data=f"auser_delall_confirm:{uid}")
-    kb.button(text="❌ Нет", callback_data=f"auser:{uid}")
-    kb.adjust(2)
-    await callback.message.edit_text(f"⚠️ Удалить {len(scripts)} хостов user{uid}?", reply_markup=kb.as_markup())
-
-@dp.callback_query(F.data.startswith("auser_delall_confirm:"))
-async def admin_delall_confirm(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    uid = int(callback.data.split(":")[1])
-    for s in get_user_scripts(uid):
-        if s.get('container_id'): kill_process(s['container_id'])
-        if s.get('original_file') and os.path.exists(s['original_file']): os.unlink(s['original_file'])
-        delete_script(s['id'])
-        shutil.rmtree(s['path'], ignore_errors=True)
-        for lf in [f"{s['id']}.log", f"{s['id']}_install.log"]:
-            if (LOGS_DIR/lf).exists(): (LOGS_DIR/lf).unlink()
-    await callback.message.edit_text(f"✅ Хосты user{uid} удалены")
-    await callback.answer()
-
-# ========== ОБРАБОТКА ID ==========
-@dp.message(AdminSubStates.waiting_user_id)
-async def admin_sub_process(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMIN_IDS: return
-    data = await state.get_data()
-    action = data.get('admin_action')
-    
-    if action == 'change_balance':
-        uid = data.get('target_uid')
-        try: amount = float(message.text.strip())
-        except: return await message.answer("❌")
-        with get_db() as conn:
-            conn.execute('UPDATE users SET balance=balance+? WHERE user_id=?', (amount, uid))
-        user = get_user(uid)
-        await message.answer(f"✅ Баланс user{uid}: {user.get('balance',0):.0f}₽")
-        await state.clear()
-        return
-    
-    if action == 'manage_user':
-        try: uid = int(message.text.strip())
-        except: return await message.answer("❌")
-        user = get_user(uid)
-        if not user: return await message.answer("❌")
-        scripts = get_user_scripts(uid)
-        running = len([s for s in scripts if s['status']=='running'])
-        sub_info, days = get_subscription_info(uid)
-        is_banned = user.get('banned', 0)
-        kb = InlineKeyboardBuilder()
-        kb.button(text="📦 Хосты", callback_data=f"auser_hosts:{uid}")
-        kb.button(text="📥 Скачать", callback_data=f"auser_download:{uid}")
-        kb.button(text="🎁 Выдать", callback_data=f"auser_give:{uid}")
-        kb.button(text="❌ Отозвать", callback_data=f"auser_remove:{uid}")
-        kb.button(text="💰 Баланс", callback_data=f"auser_balance:{uid}")
-        kb.button(text="🟢 Разбанить" if is_banned else "🚫 Забанить", callback_data=f"auser_unban:{uid}" if is_banned else f"auser_ban:{uid}")
-        kb.button(text="🗑 Удалить", callback_data=f"auser_delall:{uid}")
-        kb.adjust(1)
-        await message.answer(f"👤 user{uid}\n📦 {len(scripts)} (🟢{running})\n📋 {sub_info}" + ("\n🚫" if is_banned else ""), reply_markup=kb.as_markup())
-        await state.clear()
-    else:
-        try: uid = int(message.text.strip())
-        except: return await message.answer("❌")
-        if action == 'give':
-            kb = InlineKeyboardBuilder()
-            for tid, t in TIER_INFO.items():
-                kb.button(text=f"{t['name']}", callback_data=f"agive:{uid}:{tid}")
-            kb.adjust(1)
-            await message.answer(f"👤 {uid}\nТариф:", reply_markup=kb.as_markup())
-        elif action == 'remove':
-            remove_subscription(uid)
-            await message.answer(f"✅ Отозвано у {uid}")
-        await state.clear()
-
-@dp.callback_query(F.data.startswith("agive:"))
-async def admin_give_final(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    _, uid, tier = callback.data.split(":")
-    uid, days = int(uid), 30
-    set_subscription(uid, 'pro', days, tier)
-    await callback.message.edit_text(f"✅ {TIER_INFO[tier]['name']} 30дн user{uid}")
-    try: await bot.send_message(uid, f"🎁 {TIER_INFO[tier]['name']} 30дн!")
-    except: pass
-    await callback.answer()
-
-# ========== ВЫДАЧА/ОТЗЫВ ==========
-@dp.message(F.text.in_(['🎁 Выдать', '❌ Отозвать']))
-async def admin_sub(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMIN_IDS: return
-    action = 'give' if 'Выдать' in message.text else 'remove'
-    await state.set_state(AdminSubStates.waiting_user_id)
-    await state.update_data(admin_action=action)
-    await message.answer(f"🆔 ID для {'выдачи' if action=='give' else 'отзыва'}:")
-
-# ========== ПРОЧЕЕ ==========
-@dp.message(F.text == "👤 Юзер")
-async def user_mode(message: Message):
-    if message.from_user.id not in ADMIN_IDS: return
-    await message.answer("👤 Юзер", reply_markup=user_keyboard())
-
-@dp.message(F.text == "📊 Статистика")
-async def stats(message: Message):
+# ========== АДМИН: СТАТИСТИКА ==========
+@bot.message_handler(func=lambda m: m.text == '📊 Статистика')
+def stats(message):
     if message.from_user.id not in ADMIN_IDS: return
     u, s = get_all_users(), get_all_scripts()
     r = len([x for x in s if x['status']=='running'])
     premium = len([x for x in u if x.get('is_premium')])
     banned = len([x for x in u if x.get('banned')])
     bal = sum(x.get('balance', 0) for x in u)
-    await message.answer(f"📊 <b>v{VERSION}</b>\n👥 {len(u)} (💎{premium} 🚫{banned})\n📦 {len(s)} (🟢{r})\n💰 {bal:.0f}₽")
+    bot.send_message(message.chat.id, f"📊 <b>v{VERSION}</b>\n👥 {len(u)} (💎{premium} 🚫{banned})\n📦 {len(s)} (🟢{r})\n💰 {bal:.0f}₽")
 
-@dp.message(F.text == "📦 Хосты")
-async def admin_hosts(message: Message):
+# ========== АДМИН: ПОЛЬЗОВАТЕЛИ ==========
+@bot.message_handler(func=lambda m: m.text == '👥 Пользователи')
+def admin_users(message):
+    if message.from_user.id not in ADMIN_IDS: return
+    users = get_all_users()
+    if not users: return bot.send_message(message.chat.id, "Нет")
+    
+    kb = InlineKeyboardMarkup()
+    for u in users[:30]:
+        sub = "💎" if u.get('is_premium') else "🚫" if u.get('banned') else "🆓"
+        kb.add(InlineKeyboardButton(f"{sub} {u['user_id']} | {u.get('username','Нет')}", callback_data=f"auser:{u['user_id']}"))
+    kb.add(InlineKeyboardButton("🔍 Поиск", callback_data="search_user"))
+    
+    bot.send_message(message.chat.id, f"👥 <b>ПОЛЬЗОВАТЕЛИ ({len(users)})</b>", reply_markup=kb)
+
+# ========== АДМИН: ВЫДАЧА/ОТЗЫВ ==========
+@bot.message_handler(func=lambda m: m.text in ['🎁 Выдать', '❌ Отозвать'])
+def admin_sub(message):
+    if message.from_user.id not in ADMIN_IDS: return
+    action = 'give' if 'Выдать' in message.text else 'remove'
+    admin_waiting[message.from_user.id] = action
+    bot.send_message(message.chat.id, f"🆔 ID для {'выдачи' if action=='give' else 'отзыва'}:")
+
+# ========== АДМИН: ПРОМОКОД ==========
+@bot.message_handler(func=lambda m: m.text == '🎫 Промокод')
+def admin_promo(message):
+    if message.from_user.id not in ADMIN_IDS: return
+    promo_creating[message.from_user.id] = {'step': 'code'}
+    bot.send_message(message.chat.id, "🎫 Введите код промокода:")
+
+# ========== ОБРАБОТКА ТЕКСТОВЫХ СООБЩЕНИЙ ==========
+@bot.message_handler(content_types=['text'])
+def handle_text(message):
+    uid = message.from_user.id
+    text = message.text.strip()
+    
+    # Обработка промокодов
+    if text.isalnum() and len(text) >= 3:
+        success, msg = activate_promo(uid, text.upper())
+        if success:
+            bot.send_message(uid, f"✅ {msg}")
+    
+    # Админ: создание промокода
+    if uid in promo_creating:
+        step = promo_creating[uid]['step']
+        if step == 'code':
+            promo_creating[uid]['code'] = text.upper()
+            promo_creating[uid]['step'] = 'days'
+            kb = InlineKeyboardMarkup()
+            kb.add(InlineKeyboardButton("7 дней", callback_data="pdays:7"),
+                   InlineKeyboardButton("30 дней", callback_data="pdays:30"),
+                   InlineKeyboardButton("90 дней", callback_data="pdays:90"))
+            bot.send_message(uid, f"Код: <b>{text.upper()}</b>\n📅 Срок:", reply_markup=kb)
+        elif step == 'uses':
+            try:
+                uses = int(text)
+                data = promo_creating.pop(uid)
+                create_promo(data['code'], 'pro', data['days'], uses)
+                bot.send_message(uid, f"✅ Промокод <b>{data['code']}</b>\n📅 {data['days']}дн | 👥 {uses}")
+            except:
+                bot.send_message(uid, "❌ Число!")
+        return
+    
+    # Админ: обработка ID
+    if uid in admin_waiting:
+        action = admin_waiting.pop(uid)
+        try:
+            target_uid = int(text)
+        except:
+            return bot.send_message(uid, "❌ Неверный ID")
+        
+        if action == 'give':
+            kb = InlineKeyboardMarkup()
+            for tid, t in TIER_INFO.items():
+                kb.add(InlineKeyboardButton(f"{t['name']}", callback_data=f"agive:{target_uid}:{tid}"))
+            bot.send_message(uid, f"👤 {target_uid}\nТариф:", reply_markup=kb)
+        elif action == 'remove':
+            remove_subscription(target_uid)
+            bot.send_message(uid, f"✅ Отозвано у {target_uid}")
+            try: bot.send_message(target_uid, "⚠️ Подписка отозвана")
+            except: pass
+        return
+
+# ========== CALLBACK ОБРАБОТЧИК ==========
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    uid = call.from_user.id
+    data = call.data
+    
+    try:
+        if data == "upload":
+            upload_start(call.message)
+        elif data == "hosts":
+            show_hosts(call.message)
+        elif data == "shop":
+            shop(call.message)
+        elif data == "promo":
+            bot.send_message(uid, "🎁 Отправьте промокод:")
+        elif data == "bal":
+            balance(call.message)
+        elif data == "chat":
+            bot.send_message(uid, "💬 Отправьте сообщение для админа:\n/cancel для отмены")
+            user_states[uid] = 'chat'
+        elif data == "dep_card":
+            bot.send_message(uid, "💳 <b>Оплата</b>\n🏦 СБЕР\n💳 <code>2202206714879132</code>\n📸 Отправьте скриншот")
+        elif data == "dep_stars":
+            bot.send_message(uid, "⭐ Отправьте количество звезд (мин 50):")
+        elif data == "search_user":
+            bot.send_message(uid, "🔍 ID:")
+            admin_waiting[uid] = 'search'
+        elif data == "admin_users_list":
+            admin_users(call.message)
+        
+        # Управление скриптами
+        elif data.startswith("sc:"):
+            _, action, sid = data.split(":")
+            s = get_script(sid)
+            if not s or s['user_id'] != uid:
+                bot.answer_callback_query(call.id, "❌")
+                return
+            
+            if action == "run":
+                if s['status'] == 'running':
+                    if s.get('container_id'): kill_process(s['container_id'])
+                    update_script_status(sid, 'stopped')
+                    bot.answer_callback_query(call.id, "⏹ Остановлен")
+                else:
+                    pid, err = run_script_sync(sid, s['path'])
+                    if pid:
+                        update_script_status(sid, 'running', pid)
+                        bot.answer_callback_query(call.id, "▶️ Запущен")
+                    else:
+                        bot.answer_callback_query(call.id, f"❌ {err[:50]}")
+                show_hosts(call.message)
+            elif action == "del":
+                kb = InlineKeyboardMarkup()
+                kb.add(InlineKeyboardButton("✅ Да", callback_data=f"sc:confirm:{sid}"),
+                       InlineKeyboardButton("❌ Нет", callback_data="hosts"))
+                bot.edit_message_text(f"🗑 Удалить <b>{s['name']}</b>?", uid, call.message.message_id, reply_markup=kb)
+            elif action == "confirm":
+                if s.get('container_id'): kill_process(s['container_id'])
+                if s.get('original_file') and os.path.exists(s['original_file']):
+                    os.unlink(s['original_file'])
+                delete_script(sid, uid)
+                shutil.rmtree(s['path'], ignore_errors=True)
+                bot.answer_callback_query(call.id, "✅ Удалён")
+                show_hosts(call.message)
+        
+        # Скачивание
+        elif data.startswith("dl:"):
+            sid = data.split(":")[1]
+            s = get_script(sid)
+            if not s: return bot.answer_callback_query(call.id, "❌")
+            
+            if s.get('original_file') and os.path.exists(s['original_file']):
+                with open(s['original_file'], 'rb') as f:
+                    bot.send_document(uid, f, caption=f"📄 {s['name']}")
+            else:
+                zp = TEMP_DIR / f"{sid}.zip"
+                with zipfile.ZipFile(zp, 'w') as zf:
+                    for f in Path(s['path']).rglob('*'):
+                        if f.is_file(): zf.write(f, f.relative_to(s['path']))
+                with open(zp, 'rb') as f:
+                    bot.send_document(uid, f, caption=f"📦 {s['name']}")
+                zp.unlink()
+            bot.answer_callback_query(call.id, "✅")
+        
+        # Тарифы
+        elif data.startswith("tier:"):
+            tier = data.split(":")[1]
+            kb = InlineKeyboardMarkup()
+            for d, n in DAYS_NAMES.items():
+                kb.add(InlineKeyboardButton(f"{n} - {calc_price(tier, d)}₽", callback_data=f"days:{tier}:{d}"))
+            kb.add(InlineKeyboardButton("◀️ Назад", callback_data="shop"))
+            
+            t = TIER_INFO[tier]
+            bot.edit_message_text(
+                f"{t['name']}\n├ CPU: {t['cpu']}\n├ RAM: {t['ram']}\n├ Storage: {t['storage']}\n└ Скриптов: {t['scripts']}\n\n📅 Срок:",
+                uid, call.message.message_id, reply_markup=kb)
+        
+        elif data.startswith("days:"):
+            _, tier, days = data.split(":")
+            total = calc_price(tier, days)
+            user = get_user(uid)
+            bal = user.get('balance', 0) if user else 0
+            
+            kb = InlineKeyboardMarkup()
+            if bal >= total:
+                kb.add(InlineKeyboardButton(f"✅ Оплатить {total}₽", callback_data=f"pay:{tier}:{days}"))
+            else:
+                kb.add(InlineKeyboardButton(f"❌ {total}₽ (есть {bal}₽)", callback_data="bal"))
+            kb.add(InlineKeyboardButton("💳 Пополнить", callback_data="bal"))
+            kb.add(InlineKeyboardButton("◀️ Назад", callback_data=f"tier:{tier}"))
+            
+            bot.edit_message_text(
+                f"🧾 <b>ЗАКАЗ</b>\n\n{TIER_INFO[tier]['name']}\n📅 {DAYS_NAMES[days]}\n💰 {total}₽\n💳 Баланс: {bal}₽",
+                uid, call.message.message_id, reply_markup=kb)
+        
+        elif data.startswith("pay:"):
+            _, tier, days = data.split(":")
+            total = calc_price(tier, days)
+            user = get_user(uid)
+            
+            if user.get('balance', 0) < total:
+                bot.answer_callback_query(call.id, "❌ Мало средств")
+                return
+            
+            with get_db() as conn:
+                conn.execute('UPDATE users SET balance=balance-? WHERE user_id=?', (total, uid))
+            
+            d = 7 if days=='7' else 30 if days=='30' else 90
+            set_subscription(uid, 'pro', d, tier)
+            bot.edit_message_text(f"✅ <b>Куплено!</b>\n{TIER_INFO[tier]['name']}\n📅 {DAYS_NAMES[days]}\n💰 {total}₽",
+                                uid, call.message.message_id)
+        
+        # Админ: управление пользователями
+        elif data.startswith("auser:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1])
+            user = get_user(target)
+            if not user: return bot.answer_callback_query(call.id, "❌")
+            
+            scripts = get_user_scripts(target)
+            running = len([s for s in scripts if s['status']=='running'])
+            sub_info, days = get_subscription_info(target)
+            is_banned = user.get('banned', 0)
+            
+            text = f"👤 <b>user{target}</b>\n@{user.get('username','Нет')}\n💰 {user.get('balance',0):.0f}₽\n📋 {sub_info}\n📦 {len(scripts)} (🟢{running})"
+            if days: text += f"\n⏳ {days}дн"
+            if is_banned: text += "\n🚫 ЗАБАНЕН"
+            
+            kb = InlineKeyboardMarkup()
+            kb.add(InlineKeyboardButton("📦 Хосты", callback_data=f"auser_hosts:{target}"),
+                   InlineKeyboardButton("📥 Скачать", callback_data=f"auser_dl:{target}"))
+            kb.add(InlineKeyboardButton("🎁 Выдать", callback_data=f"auser_give:{target}"),
+                   InlineKeyboardButton("❌ Отозвать", callback_data=f"auser_remove:{target}"))
+            kb.add(InlineKeyboardButton("💰 Баланс", callback_data=f"auser_bal:{target}"))
+            kb.add(InlineKeyboardButton("🟢 Разбанить" if is_banned else "🚫 Забанить", 
+                                       callback_data=f"auser_unban:{target}" if is_banned else f"auser_ban:{target}"))
+            kb.add(InlineKeyboardButton("🗑 Удалить хосты", callback_data=f"auser_delall:{target}"))
+            kb.add(InlineKeyboardButton("◀️ Назад", callback_data="admin_users_list"))
+            
+            bot.edit_message_text(text, uid, call.message.message_id, reply_markup=kb)
+        
+        elif data.startswith("auser_hosts:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1])
+            scripts = get_user_scripts(target)
+            if not scripts: return bot.answer_callback_query(call.id, "Нет")
+            
+            text = f"📦 <b>Хосты user{target}</b>\n\n"
+            kb = InlineKeyboardMarkup()
+            for s in scripts:
+                st = "🟢" if s['status']=='running' else "🔴"
+                text += f"{st} <b>{s['name']}</b> | {(s['size'] or 0)/1024/1024:.1f}МБ\n"
+                kb.add(InlineKeyboardButton("⏹" if s['status']=='running' else "▶️", callback_data=f"asc:run:{s['id']}"),
+                       InlineKeyboardButton("📥", callback_data=f"dl:{s['id']}"),
+                       InlineKeyboardButton("🗑", callback_data=f"asc:del:{s['id']}"))
+            kb.add(InlineKeyboardButton("◀️", callback_data=f"auser:{target}"))
+            bot.edit_message_text(text, uid, call.message.message_id, reply_markup=kb)
+        
+        elif data.startswith("asc:"):
+            if uid not in ADMIN_IDS: return
+            _, action, sid = data.split(":")
+            s = get_script(sid)
+            if not s: return bot.answer_callback_query(call.id, "❌")
+            
+            if action == "run":
+                if s['status'] == 'running':
+                    if s.get('container_id'): kill_process(s['container_id'])
+                    update_script_status(sid, 'stopped')
+                else:
+                    pid, err = run_script_sync(sid, s['path'])
+                    if pid: update_script_status(sid, 'running', pid)
+            elif action == "del":
+                if s.get('container_id'): kill_process(s['container_id'])
+                if s.get('original_file') and os.path.exists(s['original_file']): os.unlink(s['original_file'])
+                delete_script(sid)
+                shutil.rmtree(s['path'], ignore_errors=True)
+            
+            # Обновляем список
+            target = s['user_id']
+            scripts = get_user_scripts(target)
+            text = f"📦 <b>Хосты user{target}</b>\n\n"
+            kb = InlineKeyboardMarkup()
+            for s in scripts:
+                st = "🟢" if s['status']=='running' else "🔴"
+                text += f"{st} <b>{s['name']}</b>\n"
+                kb.add(InlineKeyboardButton("⏹" if s['status']=='running' else "▶️", callback_data=f"asc:run:{s['id']}"),
+                       InlineKeyboardButton("📥", callback_data=f"dl:{s['id']}"),
+                       InlineKeyboardButton("🗑", callback_data=f"asc:del:{s['id']}"))
+            kb.add(InlineKeyboardButton("◀️", callback_data=f"auser:{target}"))
+            bot.edit_message_text(text, uid, call.message.message_id, reply_markup=kb)
+        
+        elif data.startswith("auser_dl:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1])
+            scripts = get_user_scripts(target)
+            if not scripts: return bot.answer_callback_query(call.id, "Нет")
+            
+            zp = TEMP_DIR / f"user_{target}.zip"
+            with zipfile.ZipFile(zp, 'w') as zf:
+                for s in scripts:
+                    if s.get('original_file') and os.path.exists(s['original_file']):
+                        zf.write(s['original_file'], s['name'])
+                    elif os.path.exists(s['path']):
+                        for f in Path(s['path']).rglob('*'):
+                            if f.is_file(): zf.write(f, f"{s['id']}/{f.relative_to(s['path'])}")
+            with open(zp, 'rb') as f:
+                bot.send_document(uid, f, caption=f"📦 user{target}")
+            zp.unlink()
+            bot.answer_callback_query(call.id, "✅")
+        
+        elif data.startswith("auser_give:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1])
+            kb = InlineKeyboardMarkup()
+            for tid, t in TIER_INFO.items():
+                kb.add(InlineKeyboardButton(f"{t['name']} 30дн", callback_data=f"agive:{target}:{tid}"))
+            kb.add(InlineKeyboardButton("◀️", callback_data=f"auser:{target}"))
+            bot.edit_message_text(f"🎁 Выдать user{target}", uid, call.message.message_id, reply_markup=kb)
+        
+        elif data.startswith("auser_remove:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1])
+            remove_subscription(target)
+            bot.edit_message_text(f"✅ Отозвано у {target}", uid, call.message.message_id)
+            try: bot.send_message(target, "⚠️ Подписка отозвана")
+            except: pass
+            bot.answer_callback_query(call.id, "✅")
+        
+        elif data.startswith("auser_bal:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1])
+            user = get_user(target)
+            admin_waiting[uid] = ('balance', target)
+            bot.send_message(uid, f"💰 user{target}: {user.get('balance',0):.0f}₽\nСумма (+/-):")
+            bot.answer_callback_query(call.id)
+        
+        elif data.startswith("auser_ban:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1])
+            ban_user(target)
+            for s in get_user_scripts(target):
+                if s.get('container_id'): kill_process(s['container_id'])
+                update_script_status(s['id'], 'stopped')
+            bot.edit_message_text(f"🚫 user{target} забанен", uid, call.message.message_id)
+            try: bot.send_message(target, "🚫 Вы забанены!")
+            except: pass
+            bot.answer_callback_query(call.id)
+        
+        elif data.startswith("auser_unban:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1])
+            unban_user(target)
+            bot.edit_message_text(f"🟢 user{target} разбанен", uid, call.message.message_id)
+            try: bot.send_message(target, "✅ Вы разбанены!")
+            except: pass
+            bot.answer_callback_query(call.id)
+        
+        elif data.startswith("auser_delall:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1])
+            for s in get_user_scripts(target):
+                if s.get('container_id'): kill_process(s['container_id'])
+                if s.get('original_file') and os.path.exists(s['original_file']): os.unlink(s['original_file'])
+                delete_script(s['id'])
+                shutil.rmtree(s['path'], ignore_errors=True)
+            bot.edit_message_text(f"✅ Хосты user{target} удалены", uid, call.message.message_id)
+            bot.answer_callback_query(call.id)
+        
+        elif data.startswith("agive:"):
+            if uid not in ADMIN_IDS: return
+            _, target, tier = data.split(":")
+            target = int(target)
+            set_subscription(target, 'pro', 30, tier)
+            bot.edit_message_text(f"✅ {TIER_INFO[tier]['name']} 30дн user{target}", uid, call.message.message_id)
+            try: bot.send_message(target, f"🎁 {TIER_INFO[tier]['name']} 30дн!")
+            except: pass
+            bot.answer_callback_query(call.id)
+        
+        elif data.startswith("pdays:"):
+            if uid not in ADMIN_IDS: return
+            days = int(data.split(":")[1])
+            promo_creating[uid] = {'step': 'uses', 'code': promo_creating.get(uid, {}).get('code', 'PROMO'), 'days': days}
+            bot.edit_message_text(f"📅 {days} дней\n👥 Макс. использований:", uid, call.message.message_id)
+        
+        # Ответ на сообщение в поддержке
+        elif data.startswith("reply:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1])
+            user_states[uid] = ('reply', target)
+            bot.send_message(uid, f"✏️ Ответ для {target}:")
+        
+        bot.answer_callback_query(call.id)
+        
+    except Exception as e:
+        logger.error(f"Callback error: {e}\n{traceback.format_exc()}")
+        try:
+            bot.answer_callback_query(call.id, "❌ Ошибка")
+        except:
+            pass
+
+# ========== ОБРАБОТКА ФОТО (скриншоты оплаты) ==========
+@bot.message_handler(content_types=['photo'])
+def handle_photo(message):
+    uid = message.from_user.id
+    
+    # Если пользователь в чате с админом
+    if user_states.get(uid) == 'chat':
+        for aid in ADMIN_IDS:
+            try:
+                bot.send_photo(aid, message.photo[-1].file_id, 
+                             caption=f"📸 От {uid}")
+            except: pass
+        bot.send_message(uid, "✅ Отправлено!")
+        user_states.pop(uid, None)
+        return
+    
+    # Скриншот оплаты
+    for aid in ADMIN_IDS:
+        kb = InlineKeyboardMarkup()
+        kb.add(
+            InlineKeyboardButton("✅ +100₽", callback_data=f"app_bal|{uid}|100"),
+            InlineKeyboardButton("✅ +200₽", callback_data=f"app_bal|{uid}|200"),
+            InlineKeyboardButton("✅ +500₽", callback_data=f"app_bal|{uid}|500")
+        )
+        kb.add(InlineKeyboardButton("❌ Отклонить", callback_data=f"rej|{uid}"))
+        try:
+            bot.send_photo(aid, message.photo[-1].file_id, 
+                         caption=f"📸 Оплата от {uid}", reply_markup=kb)
+        except: pass
+    
+    bot.send_message(uid, "✅ Скриншот отправлен!")
+
+# ========== АДМИН: ЮЗЕР РЕЖИМ ==========
+@bot.message_handler(func=lambda m: m.text == '👤 Юзер')
+def admin_user_mode(message):
+    if message.from_user.id not in ADMIN_IDS: return
+    bot.send_message(message.chat.id, "👤 Режим пользователя", reply_markup=user_keyboard())
+
+# ========== АДМИН: ХОСТЫ ==========
+@bot.message_handler(func=lambda m: m.text == '📦 Хосты')
+def admin_all_hosts(message):
     if message.from_user.id not in ADMIN_IDS: return
     scripts = get_all_scripts()
-    if not scripts: return await message.answer("Нет")
-    text = f"📦 <b>ХОСТЫ ({len(scripts)})</b>\n\n"
-    kb = InlineKeyboardBuilder()
+    if not scripts: return bot.send_message(message.chat.id, "Нет")
+    
+    text = f"📦 <b>ВСЕ ХОСТЫ ({len(scripts)})</b>\n\n"
+    kb = InlineKeyboardMarkup()
     for s in scripts[:20]:
         st = "🟢" if s['status']=='running' else "🔴"
         text += f"{st} <code>{s['id']}</code> | {s['name']} | u{s['user_id']}\n"
-        kb.button(text="⏹" if s['status']=='running' else "▶️", callback_data=f"asc:run:{s['id']}")
-        kb.button(text="📥", callback_data=f"dl:{s['id']}")
-        kb.button(text="🗑", callback_data=f"asc:del:{s['id']}")
-    kb.adjust(3)
-    await message.answer(text, reply_markup=kb.as_markup())
-
-@dp.message(F.text == "👤 Профиль")
-async def profile(message: Message):
-    uid = message.from_user.id
-    u = get_user(uid)
-    if not u: return await message.answer("❌")
-    sub_info, days = get_subscription_info(uid)
-    scr = get_user_scripts(uid)
-    mx, sz = get_user_limits(uid)
-    text = f"👤 <b>Профиль</b>\n🆔 {uid}\n💰 {u.get('balance',0):.0f}₽\n📋 {sub_info}\n📦 {len(scr)}/{mx}\n📊 {sz}МБ"
-    if days: text += f"\n⏳ {days}дн"
-    kb = InlineKeyboardBuilder()
-    kb.button(text="🎫 Промокод", callback_data="promo")
-    kb.button(text="💳 Пополнить", callback_data="bal")
-    kb.adjust(1)
-    await message.answer(text, reply_markup=kb.as_markup())
+        kb.add(
+            InlineKeyboardButton("⏹" if s['status']=='running' else "▶️", callback_data=f"asc:run:{s['id']}"),
+            InlineKeyboardButton("📥", callback_data=f"dl:{s['id']}"),
+            InlineKeyboardButton("🗑", callback_data=f"asc:del:{s['id']}")
+        )
+    bot.send_message(message.chat.id, text, reply_markup=kb)
 
 # ========== ЗАПУСК ==========
-async def main():
-    # Проверка единственного экземпляра
+if __name__ == '__main__':
     if not check_single_instance():
         logger.error("Another instance is already running!")
         sys.exit(1)
     
     try:
         init_db()
-        await bot.set_my_commands([
-            BotCommand(command="start", description="🚀 Меню"),
-            BotCommand(command="admin", description="👑 Админ")
-        ])
-        await bot.delete_webhook(drop_pending_updates=True)
-        await asyncio.sleep(1)  # Ждем завершения старых соединений
         
-        asyncio.create_task(run_web_server())
+        # Веб-сервер в отдельном потоке
+        threading.Thread(target=run_web_server, daemon=True).start()
         
         logger.info(f"🚀 Hosting Bot v{VERSION} started on port {PORT}")
-        print(f"🚀 Hosting Bot v{VERSION} | Port: {PORT}")
+        print(f"""
+╔══════════════════════════════════════════╗
+║     🚀 Hosting Bot v{VERSION}                ║
+║     TeleBot Version                      ║
+║     🌐 Web: http://0.0.0.0:{PORT}            ║
+║     🌱 29₽ | ⚡ 49₽ | 👑 79₽            ║
+╚══════════════════════════════════════════╝
+        """)
         
-        await dp.start_polling(bot)
+        bot.infinity_polling()
     finally:
         remove_lock()
-
-if __name__ == '__main__':
-    asyncio.run(main())
