@@ -1,4 +1,4 @@
-# bot.py - Хостинг бот (ПОЛНАЯ ВЕРСИЯ - ВСЁ РАБОТАЕТ)
+# bot.py - Хостинг бот (ПОЛНАЯ ВЕРСИЯ - РАБОЧАЯ)
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
@@ -17,8 +17,8 @@ from pathlib import Path
 from aiohttp import web
 
 # ========== НАСТРОЙКИ ==========
-TOKEN = os.environ.get("BOT_TOKEN", "8964647336:AAGHqh5Jz8TMySccXitAVyD5Ud1qsUbZC_4")
-VERSION = "41.0.0"
+TOKEN = os.environ.get("BOT_TOKEN", "8964647336:AAEoMHcCKOeMU37VasxqbWItyFIFUg4mGFQ")
+VERSION = "42.0.0"
 ADMIN_IDS = [314148464]
 SUPPORT_URL = "https://t.me/hesers"
 FREE_TRIAL_DAYS = 3
@@ -991,4 +991,4 @@ if __name__ == '__main__':
 ╚══════════════════════════════════════════╝
     """)
     
-    bot.infinity_polling(),
+    bot.infinity_polling()
