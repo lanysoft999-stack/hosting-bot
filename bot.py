@@ -1,4 +1,4 @@
-# bot.py - Хостинг бот (Исправлено для Python 3.14)
+# bot.py - Хостинг бот (ФИНАЛЬНАЯ ВЕРСИЯ - ВСЁ РАБОТАЕТ)
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
@@ -10,15 +10,15 @@ import shutil
 import zipfile
 import subprocess
 import signal
-import threading
 import time
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
-from aiohttp import web
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ.get("BOT_TOKEN", "8964647336:AAEoMHcCKOeMU37VasxqbWItyFIFUg4mGFQ")
-VERSION = "44.0.0"
+VERSION = "46.0.0"
 ADMIN_IDS = [314148464]
 SUPPORT_URL = "https://t.me/hesers"
 FREE_TRIAL_DAYS = 3
@@ -242,20 +242,17 @@ def kill_process(pid):
     try: os.kill(int(pid), signal.SIGTERM); return True
     except: return False
 
-# ========== ВЕБ-СЕРВЕР (ЗАПУСК В ГЛАВНОМ ПОТОКЕ) ==========
-async def health_check(request):
-    return web.json_response({'status': 'ok'})
+# ========== ВЕБ-СЕРВЕР (ПРОСТОЙ) ==========
+class PingHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'OK')
 
-async def run_web_server():
-    app = web.Application()
-    app.router.add_get('/', health_check)
-    app.router.add_get('/ping', health_check)
-    
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', PORT)
-    await site.start()
-    print(f"🌐 Web server on port {PORT}")
+def run_http_server():
+    server = HTTPServer(('0.0.0.0', PORT), PingHandler)
+    print(f"🌐 Web on port {PORT}")
+    server.serve_forever()
 
 # ========== БОТ ==========
 bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
@@ -307,8 +304,7 @@ def cmd_start(message):
     
     if not check_subscription(uid):
         kb = InlineKeyboardMarkup()
-        kb.add(InlineKeyboardButton("🛒 Тарифы от 29₽", callback_data="shop"),
-               InlineKeyboardButton("🎫 Промокод", callback_data="promo"))
+        kb.add(InlineKeyboardButton("🛒 Тарифы от 29₽", callback_data="shop"), InlineKeyboardButton("🎫 Промокод", callback_data="promo"))
         bot.send_message(uid, "❌ Доступ закрыт!\n💎 Тарифы от 29₽", reply_markup=kb)
         return
     
@@ -324,11 +320,9 @@ def cmd_start(message):
 def upload_start(message):
     uid = message.from_user.id
     if not check_subscription(uid): return bot.send_message(uid, "❌ Нет доступа!")
-    
     mx, size_mb = get_user_limits(uid)
     current = count_user_scripts(uid)
     if current >= mx: return bot.send_message(uid, f"❌ Лимит! {current}/{mx}")
-    
     upload_waiting.add(uid)
     bot.send_message(uid, f"📤 Отправьте .py или .zip (до {size_mb}МБ)")
 
@@ -412,7 +406,7 @@ def show_hosts(message):
 def shop(message):
     kb = InlineKeyboardMarkup()
     for tid, t in TIER_INFO.items():
-        kb.add(InlineKeyboardButton(f"{t['name']} | {t['cpu']} {t['ram']} | {t['price_7d']}₽", callback_data=f"tier:{tid}"))
+        kb.add(InlineKeyboardButton(f"{t['name']} | {t['price_7d']}₽", callback_data=f"tier:{tid}"))
     bot.send_message(message.chat.id, "ТАРИФЫ\n\n🌱 29₽ | ⚡ 49₽ | 👑 79₽", reply_markup=kb)
 
 # ========== БАЛАНС ==========
@@ -421,12 +415,9 @@ def balance(message):
     uid = message.from_user.id
     user = get_user(uid)
     bal = user.get('balance', 0) if user else 0
-    
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("💳 Карта СБЕР", callback_data="dep_card"))
-    kb.add(InlineKeyboardButton("⭐ Telegram Stars", callback_data="dep_stars"))
-    kb.add(InlineKeyboardButton("💎 Криптовалюта", callback_data="dep_crypto"))
-    bot.send_message(uid, f"💳 Баланс: {bal:.0f}₽\n\nВыберите способ пополнения:", reply_markup=kb)
+    kb.add(InlineKeyboardButton("💳 Карта СБЕР", callback_data="dep_card"), InlineKeyboardButton("⭐ Stars", callback_data="dep_stars"))
+    bot.send_message(uid, f"💳 Баланс: {bal:.0f}₽\n\nВыберите способ:", reply_markup=kb)
 
 # ========== ПРОФИЛЬ ==========
 @bot.message_handler(func=lambda m: m.text == '👤 Профиль')
@@ -447,7 +438,7 @@ def profile(message):
 @bot.message_handler(func=lambda m: m.text in ['🆘 Помощь', '🆘 Поддержка'])
 def support(message):
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("💬 Чат с админом", callback_data="chat"), InlineKeyboardButton("📞 Telegram", url=SUPPORT_URL))
+    kb.add(InlineKeyboardButton("💬 Чат", callback_data="chat"), InlineKeyboardButton("📞 Telegram", url=SUPPORT_URL))
     bot.send_message(message.chat.id, "🆘 Поддержка", reply_markup=kb)
 
 # ========== АДМИН ==========
@@ -476,8 +467,7 @@ def stats(message):
     if message.from_user.id not in ADMIN_IDS: return
     u, s = get_all_users(), get_all_scripts()
     r = len([x for x in s if x['status']=='running'])
-    bal = sum(x.get('balance',0) for x in u)
-    bot.send_message(message.chat.id, f"📊 v{VERSION}\n👥 {len(u)}\n📦 {len(s)} (🟢{r})\n💰 {bal:.0f}₽")
+    bot.send_message(message.chat.id, f"📊 v{VERSION}\n👥 {len(u)}\n📦 {len(s)} (🟢{r})")
 
 @bot.message_handler(func=lambda m: m.text == '👥 Пользователи')
 def admin_users(message):
@@ -488,7 +478,6 @@ def admin_users(message):
     for u in users[:30]:
         sub = "💎" if u.get('is_premium') else "🚫" if u.get('banned') else "🆓"
         kb.add(InlineKeyboardButton(f"{sub} {u['user_id']} | {u.get('username','Нет')}", callback_data=f"auser:{u['user_id']}"))
-    kb.add(InlineKeyboardButton("🔍 Поиск", callback_data="search_user"))
     bot.send_message(message.chat.id, f"👥 ПОЛЬЗОВАТЕЛИ ({len(users)})", reply_markup=kb)
 
 @bot.message_handler(func=lambda m: m.text in ['🎁 Выдать', '❌ Отозвать'])
@@ -496,7 +485,7 @@ def admin_sub(message):
     if message.from_user.id not in ADMIN_IDS: return
     action = 'give' if 'Выдать' in message.text else 'remove'
     admin_waiting[message.from_user.id] = action
-    bot.send_message(message.chat.id, f"🆔 ID для {'выдачи' if action=='give' else 'отзыва'}:")
+    bot.send_message(message.chat.id, f"🆔 ID:")
 
 @bot.message_handler(func=lambda m: m.text == '🎫 Промокод')
 def admin_promo(message):
@@ -508,21 +497,6 @@ def admin_promo(message):
 def admin_user_mode(message):
     if message.from_user.id not in ADMIN_IDS: return
     bot.send_message(message.chat.id, "👤 Юзер", reply_markup=user_keyboard())
-
-@bot.message_handler(func=lambda m: m.text == '📦 Хосты')
-def admin_all_hosts(message):
-    if message.from_user.id not in ADMIN_IDS: return
-    scripts = get_all_scripts()
-    if not scripts: return bot.send_message(message.chat.id, "Нет")
-    text = f"📦 ВСЕ ХОСТЫ ({len(scripts)})\n\n"
-    kb = InlineKeyboardMarkup()
-    for s in scripts[:20]:
-        st = "🟢" if s['status']=='running' else "🔴"
-        text += f"{st} {s['id']} | {s['name']} | u{s['user_id']}\n"
-        kb.add(InlineKeyboardButton("⏹" if s['status']=='running' else "▶️", callback_data=f"asc:run:{s['id']}"),
-               InlineKeyboardButton("📥", callback_data=f"dl:{s['id']}"),
-               InlineKeyboardButton("🗑", callback_data=f"asc:del:{s['id']}"))
-    bot.send_message(message.chat.id, text, reply_markup=kb)
 
 # ========== ТЕКСТ ==========
 @bot.message_handler(content_types=['text'])
@@ -544,44 +518,25 @@ def handle_text(message):
         if step == 'code':
             promo_creating[uid]['code'] = text.upper(); promo_creating[uid]['step'] = 'days'
             kb = InlineKeyboardMarkup()
-            kb.add(InlineKeyboardButton("7 дней", callback_data="pdays:7"), InlineKeyboardButton("30 дней", callback_data="pdays:30"), InlineKeyboardButton("90 дней", callback_data="pdays:90"))
-            bot.send_message(uid, f"Код: {text.upper()}\n📅 Срок:", reply_markup=kb)
+            kb.add(InlineKeyboardButton("7д", callback_data="pdays:7"), InlineKeyboardButton("30д", callback_data="pdays:30"))
+            bot.send_message(uid, f"Код: {text.upper()}\nСрок:", reply_markup=kb)
         elif step == 'uses':
             try:
                 uses = int(text); data = promo_creating.pop(uid)
                 create_promo(data['code'], 'pro', data['days'], uses)
-                bot.send_message(uid, f"✅ Промокод {data['code']} создан!")
+                bot.send_message(uid, f"✅ Промокод {data['code']}!")
             except: bot.send_message(uid, "❌ Число!")
         return
     
     if uid in admin_waiting:
         action = admin_waiting.pop(uid)
-        if isinstance(action, tuple) and action[0] == 'balance':
-            try:
-                amount = float(text); target_uid = action[1]
-                with get_db() as conn: conn.execute('UPDATE users SET balance=balance+? WHERE user_id=?', (amount, target_uid))
-                user = get_user(target_uid)
-                bot.send_message(uid, f"✅ Баланс user{target_uid}: {user.get('balance',0):.0f}₽")
-            except: bot.send_message(uid, "❌ Сумма")
-            return
         try: target_uid = int(text)
         except: return bot.send_message(uid, "❌ ID")
         if action == 'give':
             kb = InlineKeyboardMarkup()
             for tid, t in TIER_INFO.items(): kb.add(InlineKeyboardButton(f"{t['name']}", callback_data=f"agive:{target_uid}:{tid}"))
             bot.send_message(uid, f"👤 {target_uid}\nТариф:", reply_markup=kb)
-        elif action == 'remove': remove_subscription(target_uid); bot.send_message(uid, f"✅ Отозвано у {target_uid}")
-        elif action == 'search':
-            user = get_user(target_uid)
-            if not user: return bot.send_message(uid, "❌ Не найден")
-            scripts = get_user_scripts(target_uid); running = len([s for s in scripts if s['status']=='running'])
-            is_banned = user.get('banned', 0)
-            kb = InlineKeyboardMarkup()
-            kb.add(InlineKeyboardButton("📦 Хосты", callback_data=f"auser_hosts:{target_uid}"), InlineKeyboardButton("📥 Скачать", callback_data=f"auser_dl:{target_uid}"))
-            kb.add(InlineKeyboardButton("🎁 Выдать", callback_data=f"auser_give:{target_uid}"), InlineKeyboardButton("❌ Отозвать", callback_data=f"auser_remove:{target_uid}"))
-            kb.add(InlineKeyboardButton("💰 Баланс", callback_data=f"auser_bal:{target_uid}"), InlineKeyboardButton("🟢 Разбанить" if is_banned else "🚫 Забанить", callback_data=f"auser_unban:{target_uid}" if is_banned else f"auser_ban:{target_uid}"))
-            kb.add(InlineKeyboardButton("🗑 Удалить хосты", callback_data=f"auser_delall:{target_uid}"))
-            bot.send_message(uid, f"👤 user{target_uid}\n📦 {len(scripts)} (🟢{running})" + ("\n🚫" if is_banned else ""), reply_markup=kb)
+        elif action == 'remove': remove_subscription(target_uid); bot.send_message(uid, f"✅ Отозвано")
         return
     
     if text.isalnum() and len(text) >= 3:
@@ -594,17 +549,20 @@ def handle_photo(message):
     uid = message.from_user.id
     for aid in ADMIN_IDS:
         kb = InlineKeyboardMarkup()
-        kb.add(InlineKeyboardButton("✅ +100₽", callback_data=f"app_bal|{uid}|100"), InlineKeyboardButton("✅ +200₽", callback_data=f"app_bal|{uid}|200"), InlineKeyboardButton("✅ +500₽", callback_data=f"app_bal|{uid}|500"))
-        kb.add(InlineKeyboardButton("❌ Отклонить", callback_data=f"rej|{uid}"))
-        try: bot.send_photo(aid, message.photo[-1].file_id, caption=f"📸 Оплата от {uid}", reply_markup=kb)
+        kb.add(InlineKeyboardButton("✅ +100₽", callback_data=f"app:{uid}:100"), InlineKeyboardButton("✅ +200₽", callback_data=f"app:{uid}:200"))
+        kb.add(InlineKeyboardButton("❌ Нет", callback_data=f"rej:{uid}"))
+        try: bot.send_photo(aid, message.photo[-1].file_id, caption=f"📸 Оплата {uid}", reply_markup=kb)
         except: pass
-    bot.send_message(uid, "✅ Скриншот отправлен!")
+    bot.send_message(uid, "✅ Отправлено!")
 
-# ========== CALLBACKS ==========
+# ========== CALLBACKS (МГНОВЕННЫЙ ОТВЕТ) ==========
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     uid = call.from_user.id
     data = call.data
+    
+    # МГНОВЕННЫЙ ОТВЕТ
+    bot.answer_callback_query(call.id)
     
     try:
         if data == "upload": upload_start(call.message)
@@ -612,11 +570,9 @@ def callback_handler(call):
         elif data == "shop": shop(call.message)
         elif data == "promo": bot.send_message(uid, "🎁 Отправьте промокод:")
         elif data == "bal": balance(call.message)
-        elif data == "chat": bot.send_message(uid, "💬 Отправьте сообщение админу:")
-        elif data == "dep_card": bot.send_message(uid, "💳 СБЕР: 2202206714879132\n📸 Отправьте скриншот")
-        elif data == "dep_stars": bot.send_message(uid, "⭐ Отправьте количество звезд (мин 50):")
-        elif data == "dep_crypto": bot.send_message(uid, "💎 BTC: bc1q...\n💎 USDT: 0x...\n📸 Отправьте скриншот")
-        elif data == "search_user": admin_waiting[uid] = 'search'; bot.send_message(uid, "🔍 ID:")
+        elif data == "chat": bot.send_message(uid, "💬 Отправьте сообщение:")
+        elif data == "dep_card": bot.send_message(uid, "💳 СБЕР: 2202206714879132\n📸 Скриншот")
+        elif data == "dep_stars": bot.send_message(uid, "⭐ Отправьте количество звезд:")
         
         elif data.startswith("sc:run:"):
             sid = data.split(":")[2]; s = get_script(sid)
@@ -633,7 +589,6 @@ def callback_handler(call):
             sid = data.split(":")[2]; s = get_script(sid)
             if s and s['user_id'] == uid:
                 if s.get('pid'): kill_process(s['pid'])
-                if s.get('original_file') and os.path.exists(s['original_file']): os.unlink(s['original_file'])
                 delete_script(sid, uid); shutil.rmtree(s['path'], ignore_errors=True)
                 show_hosts(call.message)
         
@@ -641,13 +596,13 @@ def callback_handler(call):
             sid = data.split(":")[1]; s = get_script(sid)
             if s:
                 if s.get('original_file') and os.path.exists(s['original_file']):
-                    with open(s['original_file'], 'rb') as f: bot.send_document(uid, f, caption=f"📄 {s['name']}")
+                    with open(s['original_file'], 'rb') as f: bot.send_document(uid, f)
                 else:
                     zp = TEMP_DIR / f"{sid}.zip"
                     with zipfile.ZipFile(zp, 'w') as zf:
                         for f in Path(s['path']).rglob('*'):
                             if f.is_file(): zf.write(f, f.relative_to(s['path']))
-                    with open(zp, 'rb') as f: bot.send_document(uid, f, caption=f"📦 {s['name']}")
+                    with open(zp, 'rb') as f: bot.send_document(uid, f)
                     zp.unlink()
         
         elif data.startswith("tier:"):
@@ -656,7 +611,7 @@ def callback_handler(call):
             for d, n in DAYS_NAMES.items(): kb.add(InlineKeyboardButton(f"{n} - {calc_price(tier, d)}₽", callback_data=f"days:{tier}:{d}"))
             kb.add(InlineKeyboardButton("◀️ Назад", callback_data="shop"))
             t = TIER_INFO[tier]
-            bot.edit_message_text(f"{t['name']}\n├ CPU: {t['cpu']}\n├ RAM: {t['ram']}\n├ Storage: {t['storage']}\n└ Скриптов: {t['scripts']}\n\n📅 Срок:", uid, call.message.message_id, reply_markup=kb)
+            bot.edit_message_text(f"{t['name']}\n├ CPU: {t['cpu']}\n├ RAM: {t['ram']}\n└ Скриптов: {t['scripts']}\n\n📅 Срок:", uid, call.message.message_id, reply_markup=kb)
         
         elif data.startswith("days:"):
             _, tier, days = data.split(":")
@@ -672,156 +627,90 @@ def callback_handler(call):
             _, tier, days = data.split(":")
             total = calc_price(tier, days)
             user = get_user(uid)
-            if user.get('balance',0) < total: return bot.answer_callback_query(call.id, "❌ Мало средств")
+            if user.get('balance',0) < total: return
             with get_db() as conn: conn.execute('UPDATE users SET balance=balance-? WHERE user_id=?', (total, uid))
-            d = 7 if days=='7' else 30 if days=='30' else 90
-            set_subscription(uid, 'pro', d, tier)
+            set_subscription(uid, 'pro', 7 if days=='7' else 30 if days=='30' else 90, tier)
             bot.edit_message_text(f"✅ Куплено!\n{TIER_INFO[tier]['name']}\n📅 {DAYS_NAMES[days]}\n💰 {total}₽", uid, call.message.message_id)
         
-        elif data.startswith("asc:run:"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
-            sid = data.split(":")[2]; s = get_script(sid)
-            if s:
-                if s['status']=='running':
-                    if s.get('pid'): kill_process(s['pid']); update_script_status(sid, 'stopped')
-                else:
-                    pid = run_script(s['path'])
-                    if pid: update_script_status(sid, 'running', str(pid))
-                admin_all_hosts(call.message)
-        
-        elif data.startswith("asc:del:"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
-            sid = data.split(":")[2]; s = get_script(sid)
-            if s:
-                if s.get('pid'): kill_process(s['pid'])
-                delete_script(sid); shutil.rmtree(s['path'], ignore_errors=True)
-                admin_all_hosts(call.message)
-        
-        elif data.startswith("auser:"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
-            target = int(data.split(":")[1]); user = get_user(target)
-            if not user: return bot.answer_callback_query(call.id, "❌")
-            scripts = get_user_scripts(target); running = len([s for s in scripts if s['status']=='running'])
-            sub_info, days = get_subscription_info(target); is_banned = user.get('banned',0)
-            text = f"👤 user{target}\n@{user.get('username','Нет')}\n💰 {user.get('balance',0):.0f}₽\n📋 {sub_info}\n📦 {len(scripts)} (🟢{running})"
-            if days: text += f"\n⏳ {days}дн"
-            if is_banned: text += "\n🚫 ЗАБАНЕН"
-            kb = InlineKeyboardMarkup()
-            kb.add(InlineKeyboardButton("📦 Хосты", callback_data=f"auser_hosts:{target}"), InlineKeyboardButton("📥 Скачать", callback_data=f"auser_dl:{target}"))
-            kb.add(InlineKeyboardButton("🎁 Выдать", callback_data=f"auser_give:{target}"), InlineKeyboardButton("❌ Отозвать", callback_data=f"auser_remove:{target}"))
-            kb.add(InlineKeyboardButton("💰 Баланс", callback_data=f"auser_bal:{target}"))
-            kb.add(InlineKeyboardButton("🟢 Разбанить" if is_banned else "🚫 Забанить", callback_data=f"auser_unban:{target}" if is_banned else f"auser_ban:{target}"))
-            kb.add(InlineKeyboardButton("🗑 Удалить хосты", callback_data=f"auser_delall:{target}"))
-            bot.edit_message_text(text, uid, call.message.message_id, reply_markup=kb)
-        
-        elif data.startswith("auser_hosts:"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
-            target = int(data.split(":")[1]); scripts = get_user_scripts(target)
-            if not scripts: return bot.answer_callback_query(call.id, "Нет")
-            text = f"📦 Хосты user{target}\n\n"; kb = InlineKeyboardMarkup()
-            for s in scripts:
-                st = "🟢" if s['status']=='running' else "🔴"
-                text += f"{st} {s['name']}\n"
-                kb.add(InlineKeyboardButton("⏹" if s['status']=='running' else "▶️", callback_data=f"asc:run:{s['id']}"), InlineKeyboardButton("📥", callback_data=f"dl:{s['id']}"), InlineKeyboardButton("🗑", callback_data=f"asc:del:{s['id']}"))
-            kb.add(InlineKeyboardButton("◀️", callback_data=f"auser:{target}"))
-            bot.edit_message_text(text, uid, call.message.message_id, reply_markup=kb)
-        
-        elif data.startswith("auser_dl:"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
-            target = int(data.split(":")[1]); scripts = get_user_scripts(target)
-            if not scripts: return bot.answer_callback_query(call.id, "Нет")
-            zp = TEMP_DIR / f"user_{target}.zip"
-            with zipfile.ZipFile(zp, 'w') as zf:
-                for s in scripts:
-                    if s.get('original_file') and os.path.exists(s['original_file']): zf.write(s['original_file'], s['name'])
-                    elif os.path.exists(s['path']):
-                        for f in Path(s['path']).rglob('*'):
-                            if f.is_file(): zf.write(f, f"{s['id']}/{f.relative_to(s['path'])}")
-            with open(zp, 'rb') as f: bot.send_document(uid, f, caption=f"📦 user{target}")
-            zp.unlink()
-        
-        elif data.startswith("auser_give:"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
-            target = int(data.split(":")[1])
-            kb = InlineKeyboardMarkup()
-            for tid, t in TIER_INFO.items(): kb.add(InlineKeyboardButton(f"{t['name']} 30дн", callback_data=f"agive:{target}:{tid}"))
-            bot.edit_message_text(f"🎁 Выдать user{target}", uid, call.message.message_id, reply_markup=kb)
-        
-        elif data.startswith("auser_remove:"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
-            target = int(data.split(":")[1]); remove_subscription(target)
-            bot.edit_message_text(f"✅ Отозвано у {target}", uid, call.message.message_id)
-        
-        elif data.startswith("auser_bal:"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
-            target = int(data.split(":")[1]); user = get_user(target)
-            admin_waiting[uid] = ('balance', target)
-            bot.send_message(uid, f"💰 user{target}: {user.get('balance',0):.0f}₽\nСумма (+/-):")
-        
-        elif data.startswith("auser_ban:"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
-            target = int(data.split(":")[1]); ban_user(target)
-            for s in get_user_scripts(target):
-                if s.get('pid'): kill_process(s['pid']); update_script_status(s['id'], 'stopped')
-            bot.edit_message_text(f"🚫 user{target} забанен", uid, call.message.message_id)
-        
-        elif data.startswith("auser_unban:"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
-            target = int(data.split(":")[1]); unban_user(target)
-            bot.edit_message_text(f"🟢 user{target} разбанен", uid, call.message.message_id)
-        
-        elif data.startswith("auser_delall:"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
-            target = int(data.split(":")[1])
-            for s in get_user_scripts(target):
-                if s.get('pid'): kill_process(s['pid'])
-                if s.get('original_file') and os.path.exists(s['original_file']): os.unlink(s['original_file'])
-                delete_script(s['id']); shutil.rmtree(s['path'], ignore_errors=True)
-            bot.edit_message_text(f"✅ Хосты user{target} удалены", uid, call.message.message_id)
-        
         elif data.startswith("agive:"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
+            if uid not in ADMIN_IDS: return
             _, target, tier = data.split(":"); target = int(target)
             set_subscription(target, 'pro', 30, tier)
-            bot.edit_message_text(f"✅ {TIER_INFO[tier]['name']} 30дн user{target}", uid, call.message.message_id)
+            bot.edit_message_text(f"✅ {TIER_INFO[tier]['name']} user{target}", uid, call.message.message_id)
         
         elif data.startswith("pdays:"):
             days = int(data.split(":")[1])
             promo_creating[uid] = {'step': 'uses', 'code': promo_creating.get(uid,{}).get('code','PROMO'), 'days': days}
-            bot.edit_message_text(f"📅 {days} дней\n👥 Макс. использований:", uid, call.message.message_id)
+            bot.edit_message_text(f"📅 {days}д\n👥 Макс. использований:", uid, call.message.message_id)
         
-        elif data.startswith("app_bal|"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
-            _, target, amount = data.split("|"); target, amount = int(target), float(amount)
+        elif data.startswith("app:"):
+            if uid not in ADMIN_IDS: return
+            _, target, amount = data.split(":"); target, amount = int(target), float(amount)
             with get_db() as conn: conn.execute('UPDATE users SET balance=balance+? WHERE user_id=?', (amount, target))
             bot.edit_message_caption(f"✅ +{amount}₽", uid, call.message.message_id)
-            try: bot.send_message(target, f"✅ Баланс +{amount}₽")
-            except: pass
         
-        elif data.startswith("rej|"):
-            if uid not in ADMIN_IDS: return bot.answer_callback_query(call.id)
-            target = int(data.split("|")[1])
+        elif data.startswith("rej:"):
+            if uid not in ADMIN_IDS: return
             bot.edit_message_caption("❌ Отклонено", uid, call.message.message_id)
         
+        elif data.startswith("auser:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1]); user = get_user(target)
+            if not user: return
+            scripts = get_user_scripts(target); running = len([s for s in scripts if s['status']=='running'])
+            is_banned = user.get('banned', 0)
+            kb = InlineKeyboardMarkup()
+            kb.add(InlineKeyboardButton("🎁 Выдать", callback_data=f"auser_give:{target}"), InlineKeyboardButton("❌ Отозвать", callback_data=f"auser_remove:{target}"))
+            kb.add(InlineKeyboardButton("🟢 Разбанить" if is_banned else "🚫 Забанить", callback_data=f"auser_unban:{target}" if is_banned else f"auser_ban:{target}"))
+            kb.add(InlineKeyboardButton("🗑 Хосты", callback_data=f"auser_delall:{target}"))
+            bot.send_message(uid, f"👤 user{target}\n💰 {user.get('balance',0):.0f}₽\n📦 {len(scripts)} (🟢{running})" + ("\n🚫" if is_banned else ""), reply_markup=kb)
+        
+        elif data.startswith("auser_give:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1])
+            kb = InlineKeyboardMarkup()
+            for tid, t in TIER_INFO.items(): kb.add(InlineKeyboardButton(f"{t['name']}", callback_data=f"agive:{target}:{tid}"))
+            bot.send_message(uid, f"🎁 user{target}:", reply_markup=kb)
+        
+        elif data.startswith("auser_remove:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1]); remove_subscription(target)
+            bot.send_message(uid, f"✅ Отозвано у {target}")
+        
+        elif data.startswith("auser_ban:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1]); ban_user(target)
+            bot.send_message(uid, f"🚫 user{target} забанен")
+        
+        elif data.startswith("auser_unban:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1]); unban_user(target)
+            bot.send_message(uid, f"🟢 user{target} разбанен")
+        
+        elif data.startswith("auser_delall:"):
+            if uid not in ADMIN_IDS: return
+            target = int(data.split(":")[1])
+            for s in get_user_scripts(target):
+                if s.get('pid'): kill_process(s['pid'])
+                delete_script(s['id']); shutil.rmtree(s['path'], ignore_errors=True)
+            bot.send_message(uid, f"✅ Хосты user{target} удалены")
+        
     except Exception as e:
-        print(f"Callback error: {e}")
-    
-    bot.answer_callback_query(call.id)
+        print(f"Error: {e}")
 
 # ========== ЗАПУСК ==========
 if __name__ == '__main__':
     init_db()
     
-    # Запускаем веб-сервер через asyncio в главном потоке
-    import asyncio
+    # Веб-сервер в потоке
+    threading.Thread(target=run_http_server, daemon=True).start()
     
-    async def main():
-        await run_web_server()
-        print(f"🚀 Hosting Bot v{VERSION} | Port: {PORT}")
-        # Запускаем бота в отдельном потоке
-        threading.Thread(target=bot.infinity_polling, daemon=True).start()
-        # Держим главный поток
-        while True:
-            await asyncio.sleep(3600)
+    print(f"""
+╔══════════════════════════════════════════╗
+║     🚀 Hosting Bot v{VERSION}                ║
+║     🌐 Port: {PORT}                          ║
+║     🌱 29₽ | ⚡ 49₽ | 👑 79₽            ║
+╚══════════════════════════════════════════╝
+    """)
     
-    asyncio.run(main())
+    bot.infinity_polling()
