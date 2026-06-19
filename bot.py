@@ -17,7 +17,7 @@ from pathlib import Path
 from aiohttp import web
 
 # ========== НАСТРОЙКИ ==========
-TOKEN = os.environ.get("BOT_TOKEN", "8964647336:AAGHqh5Jz8TMySccXitAVyD5Ud1qsUbZC_4")
+TOKEN = os.environ.get("BOT_TOKEN", "8964647336:AAFFeo1AvCnlWRu54SR5GeDs7FSfHM-Jq3k")
 VERSION = "40.0.0"
 ADMIN_IDS = [314148464]
 SUPPORT_URL = "https://t.me/hesers"
