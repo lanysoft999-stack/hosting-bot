@@ -1,0 +1,12 @@
+[project]
+name = "hosting-bot"
+version = "1.0.0"
+requires-python = ">=3.9"
+dependencies = [
+    "aiogram>=3.0.0",
+    "aiofiles>=23.0.0"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
