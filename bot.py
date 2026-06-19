@@ -1,4 +1,4 @@
-# bot.py - Хостинг бот на aiogram 3.x (Render-ready версия)
+# bot.py - Хостинг бот на aiogram 3.x (Обновленные тарифы)
 import asyncio
 import logging
 import sys
@@ -33,15 +33,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger('hosting_bot')
 
 # ========== НАСТРОЙКИ ==========
 TOKEN = os.environ.get("BOT_TOKEN", "8964647336:AAHs5cGpAuSGaXbDBeG-lmS6z0fgXIEM2rs")
-VERSION = "27.0.0"
+VERSION = "28.0.0"
 ADMIN_IDS = [314148464]
 SUPPORT_URL = "https://t.me/hesers"
 
@@ -59,19 +57,61 @@ DATABASE_PATH = BASE_DIR / "bot_database.db"
 for d in [SCRIPTS_DIR, LOGS_DIR, TEMP_DIR, FILES_DIR]:
     d.mkdir(exist_ok=True)
 
-# ========== ДАННЫЕ ==========
-LOCATIONS = {
-    "de": {"name": "Германия", "flag": "🇩🇪", "max_tiers": 3},
-    "us": {"name": "США", "flag": "🇺🇸", "max_tiers": 2},
-    "fi": {"name": "Финляндия", "flag": "🇫🇮", "max_tiers": 5}
+# ========== НОВЫЕ ТАРИФЫ ==========
+# Пакеты вместо стран
+PACKAGES = {
+    "beginner": {
+        "name": "🌱 Новичок",
+        "emoji": "🌱",
+        "description": "Для начинающих разработчиков",
+        "color": "#4CAF50"
+    },
+    "standard": {
+        "name": "⚡ Стандарт",
+        "emoji": "⚡",
+        "description": "Оптимальный выбор",
+        "color": "#2196F3"
+    },
+    "expert": {
+        "name": "👑 Эксперт",
+        "emoji": "👑",
+        "description": "Максимальные возможности",
+        "color": "#FF9800"
+    }
 }
 
+# Супер низкие цены
 TIER_INFO = {
-    "1": {"name": "Tier 1", "price_7d": 65, "cpu": "1 vCPU", "ram": "512 MB", "scripts": 3},
-    "2": {"name": "Tier 2", "price_7d": 100, "cpu": "2 vCPU", "ram": "1 GB", "scripts": 5},
-    "3": {"name": "Tier 3", "price_7d": 140, "cpu": "3 vCPU", "ram": "2 GB", "scripts": 10},
-    "4": {"name": "Tier 4", "price_7d": 220, "cpu": "4 vCPU", "ram": "4 GB", "scripts": 20},
-    "5": {"name": "Tier 5", "price_7d": 300, "cpu": "5 vCPU", "ram": "8 GB", "scripts": 999},
+    "1": {
+        "name": "🌱 Новичок",
+        "emoji": "🌱",
+        "price_7d": 29,
+        "cpu": "1 vCPU",
+        "ram": "512 MB",
+        "scripts": 3,
+        "storage": "5 GB",
+        "package": "beginner"
+    },
+    "2": {
+        "name": "⚡ Стандарт",
+        "emoji": "⚡",
+        "price_7d": 49,
+        "cpu": "2 vCPU",
+        "ram": "1 GB",
+        "scripts": 5,
+        "storage": "10 GB",
+        "package": "standard"
+    },
+    "3": {
+        "name": "👑 Эксперт",
+        "emoji": "👑",
+        "price_7d": 79,
+        "cpu": "3 vCPU",
+        "ram": "2 GB",
+        "scripts": 10,
+        "storage": "25 GB",
+        "package": "expert"
+    }
 }
 
 DAYS_MULTIPLIER = {"7": 1, "30": 4, "90": 10}
@@ -192,7 +232,6 @@ def set_subscription(uid, plan, days=0, tier=None, location=None):
         conn.commit()
 
 def remove_subscription(uid):
-    """Отзывает подписку у пользователя"""
     with get_db() as conn:
         conn.execute('''UPDATE users SET subscription = 'free', subscription_expiry = NULL, 
                        is_premium = 0, current_tier = NULL, current_location = NULL WHERE user_id = ?''', (uid,))
@@ -280,7 +319,7 @@ def save_user_file(uid, file_name, file_data):
 async def install_requirements(script_path: str, script_id: str) -> tuple:
     req_file = Path(script_path) / "requirements.txt"
     if not req_file.exists():
-        return True, "Зависимости не требуются"
+        return True, "OK"
     
     log_path = LOGS_DIR / f"{script_id}_install.log"
     
@@ -294,11 +333,11 @@ async def install_requirements(script_path: str, script_id: str) -> tuple:
         await process.wait()
         
         if process.returncode == 0:
-            return True, "Зависимости установлены"
+            return True, "OK"
         else:
             with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
                 error_text = f.read()[-500:]
-            return False, f"Ошибка установки зависимостей:\n{error_text}"
+            return False, f"Ошибка установки:\n{error_text}"
     except Exception as e:
         return False, str(e)
 
@@ -372,7 +411,7 @@ def user_keyboard():
         KeyboardButton(text="💻 Мои хосты")
     )
     builder.row(
-        KeyboardButton(text="🛒 Магазин"),
+        KeyboardButton(text="🛒 Тарифы"),
         KeyboardButton(text="💳 Пополнить")
     )
     builder.row(
@@ -438,11 +477,11 @@ async def cmd_start(message: Message, state: FSMContext):
     if not get_user(uid): 
         create_user(uid, message.from_user.username)
         await message.answer(
-            f"🎉 Добро пожаловать!\n\n"
-            f"🆓 Активирован бесплатный тариф на {FREE_TRIAL_DAYS} дня!\n"
+            f"🎉 <b>Добро пожаловать!</b>\n\n"
+            f"🆓 Бесплатный тариф на {FREE_TRIAL_DAYS} дня!\n"
             f"📦 Скриптов: {FREE_MAX_SCRIPTS}\n"
             f"📊 Размер файла: {FREE_MAX_SIZE_MB} МБ\n\n"
-            f"💎 После окончания пробного периода приобретите премиум!"
+            f"💎 Низкие цены от 29₽!"
         )
     
     await state.clear()
@@ -453,26 +492,24 @@ async def cmd_start(message: Message, state: FSMContext):
         u = get_all_users()
         premium_users = len([x for x in u if x.get('is_premium', 0) == 1])
         await message.answer(
-            f"👑 АДМИН-ПАНЕЛЬ\n\n"
+            f"👑 <b>АДМИН-ПАНЕЛЬ</b>\n\n"
             f"👥 Пользователей: {len(u)} (💎{premium_users})\n"
-            f"📦 Хостов: {len(s)} (🟢{r})\n"
-            f"🆓 Бесплатный тариф: {FREE_TRIAL_DAYS} дня\n\n"
+            f"📦 Хостов: {len(s)} (🟢{r})\n\n"
             f"👇 Действие:",
             reply_markup=admin_keyboard()
         )
         return
     
     if not check_subscription(uid):
-        sub_info, days, sub_type = get_subscription_info(uid)
         kb = InlineKeyboardBuilder()
-        kb.button(text="🛒 Купить премиум", callback_data="shop_configurator")
+        kb.button(text="🛒 Выбрать тариф", callback_data="shop_configurator")
         kb.button(text="🎫 Промокод", callback_data="activate_promo")
         kb.adjust(1)
         
         await message.answer(
-            f"❌ ДОСТУП ЗАБЛОКИРОВАН\n\n"
-            f"🆓 Бесплатный тариф истек!\n"
-            f"💎 Приобретите премиум для продолжения.\n\n"
+            f"❌ <b>ДОСТУП ЗАБЛОКИРОВАН</b>\n\n"
+            f"Бесплатный тариф истек!\n"
+            f"💎 Тарифы от 29₽!\n\n"
             f"👇 Выберите действие:",
             reply_markup=kb.as_markup()
         )
@@ -487,21 +524,21 @@ async def cmd_start(message: Message, state: FSMContext):
     limits = get_user_limits(uid)
     
     await message.answer(
-        f"🚀 HOSTING BOT v{VERSION}\n\n"
-        f"📊 Статистика:\n"
+        f"🚀 <b>HOSTING BOT</b>\n\n"
+        f"📊 <b>Статистика:</b>\n"
         f"├ 📋 Тариф: {sub_info}\n"
         f"├ 📦 Хостов: {len(scripts)}/{limits[0]}\n"
         f"├ 🟢 Запущено: {running}\n"
         f"├ 🔴 Остановлено: {stopped}\n"
         f"└ 📈 Аптайм: {uptime}%\n\n"
-        f"👇 Действие:",
+        f"👇 <b>Действие:</b>",
         reply_markup=user_keyboard()
     )
 
 @dp.message(Command('admin'), AdminFilter())
 async def cmd_admin(message: Message):
     admin_mode[message.from_user.id] = True
-    await message.answer("👑 Админ-панель активирована!", reply_markup=admin_keyboard())
+    await message.answer("👑 <b>Админ-панель активирована!</b>", reply_markup=admin_keyboard())
 
 @dp.callback_query(F.data == "shop_configurator")
 async def shop_configurator(callback: CallbackQuery):
@@ -515,9 +552,9 @@ async def btn_upload(message: Message, state: FSMContext):
     
     if not check_subscription(uid):
         await message.answer(
-            f"❌ ДОСТУП ЗАКРЫТ!\n\n"
-            f"🆓 Бесплатный тариф на {FREE_TRIAL_DAYS} дня истек.\n"
-            f"💎 Купите премиум для продолжения!"
+            f"❌ <b>ДОСТУП ЗАКРЫТ!</b>\n\n"
+            f"Бесплатный тариф истек.\n"
+            f"💎 Тарифы от 29₽!"
         )
         return
     
@@ -526,22 +563,21 @@ async def btn_upload(message: Message, state: FSMContext):
     
     if current_scripts >= mx_scripts:
         await message.answer(
-            f"❌ Лимит хостов!\n\n"
+            f"❌ <b>Лимит хостов!</b>\n\n"
             f"├ Максимум: {mx_scripts}\n"
             f"└ Сейчас: {current_scripts}\n\n"
-            f"💎 Купите премиум для увеличения лимита"
+            f"💎 Улучшите тариф для увеличения лимита"
         )
         return
     
     await state.set_state(UploadStates.waiting_file)
     await message.answer(
-        f"📤 ЗАГРУЗКА ФАЙЛА\n\n"
+        f"📤 <b>ЗАГРУЗКА ФАЙЛА</b>\n\n"
         f"├ 📄 Поддерживаются: .py, .zip\n"
         f"├ 📦 Макс. размер: {mx_size} МБ\n"
         f"├ 📊 Лимит: {current_scripts}/{mx_scripts}\n"
-        f"├ 📚 Автоустановка из requirements.txt\n"
         f"└ ❌ /cancel для отмены\n\n"
-        f"👇 Отправьте файл:"
+        f"👇 <b>Отправьте файл:</b>"
     )
 
 @dp.message(UploadStates.waiting_file, F.document, BotActiveFilter())
@@ -571,13 +607,13 @@ async def handle_upload(message: Message, state: FSMContext):
     td.mkdir(exist_ok=True)
     tp = td / fn
     
-    status_msg = await message.answer("📥 Загрузка файла...")
+    status_msg = await message.answer("📥 <b>Загрузка файла...</b>")
     await bot.download(doc, destination=tp)
     
     file_data = tp.read_bytes()
     original_file_path = save_user_file(uid, fn, file_data)
     
-    await status_msg.edit_text("📦 Обработка файла...")
+    await status_msg.edit_text("📦 <b>Обработка файла...</b>")
     
     sid = str(uuid.uuid4())[:8]
     
@@ -610,12 +646,12 @@ async def handle_upload(message: Message, state: FSMContext):
         
         total_size = sum(f.stat().st_size for f in ud.rglob('*') if f.is_file())
         
-        await status_msg.edit_text("📚 Проверка зависимостей...")
+        await status_msg.edit_text("📚 <b>Установка библиотек...</b>")
         
         cid, err = await run_script_async(sid, str(ud))
         
         if err:
-            await status_msg.edit_text(f"❌ Ошибка запуска:\n{err}")
+            await status_msg.edit_text(f"❌ <b>Ошибка запуска:</b>\n{err}")
             shutil.rmtree(str(ud), ignore_errors=True)
             return
         
@@ -628,9 +664,9 @@ async def handle_upload(message: Message, state: FSMContext):
         kb.adjust(1)
         
         await status_msg.edit_text(
-            f"✅ ХОСТ ЗАПУЩЕН!\n\n"
+            f"✅ <b>ХОСТ ЗАПУЩЕН!</b>\n\n"
             f"├ 📄 Файл: {fn}\n"
-            f"├ 🆔 ID: {sid}\n"
+            f"├ 🆔 ID: <code>{sid}</code>\n"
             f"├ 📦 Размер: {total_size / (1024*1024):.1f} МБ\n"
             f"└ ⚡ Статус: 🟢 Запущен",
             reply_markup=kb.as_markup()
@@ -642,12 +678,12 @@ async def handle_upload(message: Message, state: FSMContext):
         ud.mkdir(parents=True, exist_ok=True)
         shutil.move(str(tp), str(ud / fn))
         
-        await status_msg.edit_text("📚 Проверка зависимостей...")
+        await status_msg.edit_text("📚 <b>Установка библиотек...</b>")
         
         cid, err = await run_script_async(sid, str(ud))
         
         if err:
-            await status_msg.edit_text(f"❌ Ошибка запуска:\n{err}")
+            await status_msg.edit_text(f"❌ <b>Ошибка запуска:</b>\n{err}")
             return
         
         add_script(sid, uid, fn, str(ud), fs, original_file_path)
@@ -659,9 +695,9 @@ async def handle_upload(message: Message, state: FSMContext):
         kb.adjust(1)
         
         await status_msg.edit_text(
-            f"✅ ХОСТ ЗАПУЩЕН!\n\n"
+            f"✅ <b>ХОСТ ЗАПУЩЕН!</b>\n\n"
             f"├ 📄 Файл: {fn}\n"
-            f"├ 🆔 ID: {sid}\n"
+            f"├ 🆔 ID: <code>{sid}</code>\n"
             f"├ 📦 Размер: {fs / (1024*1024):.1f} МБ\n"
             f"└ ⚡ Статус: 🟢 Запущен",
             reply_markup=kb.as_markup()
@@ -712,7 +748,7 @@ async def download_file(callback: CallbackQuery):
             
             await callback.message.answer_document(
                 FSInputFile(zip_path),
-                caption=f"📦 {script['name']}\n🆔 {script_id}\n(архив файлов)"
+                caption=f"📦 {script['name']}\n🆔 {script_id}"
             )
             
             zip_path.unlink()
@@ -735,17 +771,17 @@ async def btn_hosts(message: Message):
         kb = InlineKeyboardBuilder()
         kb.button(text="📤 Загрузить файл", callback_data="upload_file")
         kb.adjust(1)
-        await message.answer("😔 Нет хостов\n\nЗагрузите ваш первый скрипт!", reply_markup=kb.as_markup())
+        await message.answer("😔 <b>Нет хостов</b>\n\nЗагрузите ваш первый скрипт!", reply_markup=kb.as_markup())
         return
     
-    text = f"💻 МОИ ХОСТЫ ({len(scripts)})\n\n"
+    text = f"💻 <b>МОИ ХОСТЫ ({len(scripts)})</b>\n\n"
     kb = InlineKeyboardBuilder()
     
     for i, s in enumerate(scripts, 1):
         st = "🟢" if s['status'] == 'running' else "🔴"
         status_text = "запущен" if s['status'] == 'running' else "остановлен"
         sz = s['size'] / (1024 * 1024) if s['size'] else 0
-        text += f"{i}. {st} {s['name']}\n   └ {sz:.1f}МБ | {status_text} | {s['id']}\n"
+        text += f"{i}. {st} <b>{s['name']}</b>\n   └ {sz:.1f}МБ | {status_text} | <code>{s['id']}</code>\n"
         
         if s['status'] == 'running':
             kb.button(text=f"⏹ Стоп", callback_data=f"sc:stop:{s['id']}")
@@ -819,9 +855,9 @@ async def script_action(callback: CallbackQuery):
             kb.adjust(2)
             
             await callback.message.edit_text(
-                f"⚠️ Удалить хост?\n\n"
+                f"⚠️ <b>Удалить хост?</b>\n\n"
                 f"📄 {s['name']}\n"
-                f"🆔 {sid}\n\n"
+                f"🆔 <code>{sid}</code>\n\n"
                 f"Это действие необратимо!",
                 reply_markup=kb.as_markup()
             )
@@ -852,14 +888,14 @@ async def script_action(callback: CallbackQuery):
         # Обновляем список
         scripts = get_user_scripts(uid)
         if scripts:
-            text = f"💻 МОИ ХОСТЫ ({len(scripts)})\n\n"
+            text = f"💻 <b>МОИ ХОСТЫ ({len(scripts)})</b>\n\n"
             kb = InlineKeyboardBuilder()
             
             for i, s in enumerate(scripts, 1):
                 st = "🟢" if s['status'] == 'running' else "🔴"
                 status_text = "запущен" if s['status'] == 'running' else "остановлен"
                 sz = s['size'] / (1024 * 1024) if s['size'] else 0
-                text += f"{i}. {st} {s['name']}\n   └ {sz:.1f}МБ | {status_text}\n"
+                text += f"{i}. {st} <b>{s['name']}</b>\n   └ {sz:.1f}МБ | {status_text}\n"
                 
                 if s['status'] == 'running':
                     kb.button(text=f"⏹ Стоп", callback_data=f"sc:stop:{s['id']}")
@@ -877,7 +913,7 @@ async def script_action(callback: CallbackQuery):
             kb.button(text="📤 Загрузить файл", callback_data="upload_file")
             kb.adjust(1)
             await callback.message.edit_text(
-                "😔 Нет хостов\n\nЗагрузите ваш первый скрипт!",
+                "😔 <b>Нет хостов</b>\n\nЗагрузите ваш первый скрипт!",
                 reply_markup=kb.as_markup()
             )
     
@@ -885,43 +921,28 @@ async def script_action(callback: CallbackQuery):
         logger.error(f"Script action error: {e}")
         await callback.answer("❌ Ошибка!")
 
-# ========== МАГАЗИН (ПРЕМИУМ) ==========
-@dp.message(F.text == "🛒 Магазин", BotActiveFilter())
+# ========== МАГАЗИН ТАРИФОВ ==========
+@dp.message(F.text == "🛒 Тарифы", BotActiveFilter())
 async def shop_menu(message: Message):
     kb = InlineKeyboardBuilder()
-    for loc_id, loc_data in LOCATIONS.items():
-        kb.button(text=f"{loc_data['flag']} {loc_data['name']}", callback_data=f"shop_loc:{loc_id}")
+    
+    # Показываем все тарифы сразу
+    for tier_id in ["1", "2", "3"]:
+        t = TIER_INFO[tier_id]
+        kb.button(
+            text=f"{t['emoji']} {t['name']} | {t['cpu']} {t['ram']} | от {t['price_7d']}₽",
+            callback_data=f"shop_tier:{tier_id}"
+        )
+    
     kb.button(text="❌ Закрыть", callback_data="close_menu")
-    kb.adjust(2)
-    
-    await message.answer(
-        f"🛒 ПРЕМИУМ ТАРИФЫ\n\n"
-        f"🌍 Выберите локацию:\n\n"
-        f"🆓 Бесплатный тариф: {FREE_TRIAL_DAYS} дня\n"
-        f"💎 Премиум даёт больше ресурсов!",
-        reply_markup=kb.as_markup()
-    )
-
-@dp.callback_query(F.data.startswith("shop_loc:"))
-async def shop_select_location(callback: CallbackQuery, state: FSMContext):
-    loc = callback.data.split(":")[1]
-    await state.update_data(location=loc)
-    
-    max_tier = LOCATIONS[loc]['max_tiers']
-    kb = InlineKeyboardBuilder()
-    for t_id in ["1","2","3","4","5"]:
-        if int(t_id) <= max_tier:
-            t_data = TIER_INFO[t_id]
-            kb.button(
-                text=f"{t_data['name']}: {t_data['cpu']} | {t_data['ram']} — от {t_data['price_7d']}₽", 
-                callback_data=f"shop_tier:{t_id}"
-            )
-    kb.button(text="◀️ Назад", callback_data="back_to_shop")
     kb.adjust(1)
     
-    await callback.message.edit_text(
-        f"📍 {LOCATIONS[loc]['flag']} {LOCATIONS[loc]['name']}\n\n"
-        f"⚙️ Выберите тариф:",
+    await message.answer(
+        f"🛒 <b>ТАРИФЫ</b>\n\n"
+        f"🌱 <b>Новичок</b> - от 29₽\n"
+        f"⚡ <b>Стандарт</b> - от 49₽\n"
+        f"👑 <b>Эксперт</b> - от 79₽\n\n"
+        f"👇 <b>Выберите тариф:</b>",
         reply_markup=kb.as_markup()
     )
 
@@ -932,18 +953,32 @@ async def shop_select_tier(callback: CallbackQuery, state: FSMContext):
     
     t_data = TIER_INFO[tier]
     kb = InlineKeyboardBuilder()
-    for d_id, d_name in DAYS_NAMES.items():
-        price = calc_price(tier, d_id)
-        kb.button(text=f"{d_name} — {price}₽", callback_data=f"shop_days:{d_id}")
+    
+    # Показываем цены со скидками
+    kb.button(
+        text=f"7 дней — {t_data['price_7d']}₽",
+        callback_data=f"shop_days:7"
+    )
+    kb.button(
+        text=f"30 дней — {t_data['price_7d'] * 4}₽",
+        callback_data=f"shop_days:30"
+    )
+    kb.button(
+        text=f"90 дней — {t_data['price_7d'] * 10}₽",
+        callback_data=f"shop_days:90"
+    )
+    
     kb.button(text="◀️ Назад", callback_data="back_to_shop")
     kb.adjust(1)
     
     await callback.message.edit_text(
-        f"📦 {t_data['name']}\n"
+        f"{t_data['emoji']} <b>{t_data['name']}</b>\n\n"
+        f"🖥 <b>Характеристики:</b>\n"
         f"├ CPU: {t_data['cpu']}\n"
         f"├ RAM: {t_data['ram']}\n"
+        f"├ Storage: {t_data['storage']}\n"
         f"└ Скриптов: {t_data['scripts']}\n\n"
-        f"📅 Выберите срок:",
+        f"📅 <b>Выберите срок:</b>",
         reply_markup=kb.as_markup()
     )
 
@@ -951,11 +986,10 @@ async def shop_select_tier(callback: CallbackQuery, state: FSMContext):
 async def shop_select_days(callback: CallbackQuery, state: FSMContext):
     days = callback.data.split(":")[1]
     data = await state.get_data()
-    location = data.get('location')
     tier = data.get('tier')
     
-    if not location or not tier:
-        await callback.answer("❌ Выберите локацию и тариф!")
+    if not tier:
+        await callback.answer("❌ Выберите тариф!")
         return
     
     total = calc_price(tier, days)
@@ -964,7 +998,7 @@ async def shop_select_days(callback: CallbackQuery, state: FSMContext):
     
     kb = InlineKeyboardBuilder()
     if balance >= total:
-        kb.button(text=f"✅ Оплатить {total}₽", callback_data=f"pay:{location}:{tier}:{days}")
+        kb.button(text=f"✅ Оплатить {total}₽", callback_data=f"pay:{tier}:{days}")
     else:
         kb.button(text=f"❌ Не хватает {total - balance}₽", callback_data="noop")
     kb.button(text="💳 Пополнить", callback_data="deposit_menu")
@@ -972,9 +1006,11 @@ async def shop_select_days(callback: CallbackQuery, state: FSMContext):
     kb.adjust(1)
     
     await callback.message.edit_text(
-        f"🧾 ЗАКАЗ:\n\n"
-        f"📍 {LOCATIONS[location]['flag']} {LOCATIONS[location]['name']}\n"
-        f"📦 {TIER_INFO[tier]['name']}\n"
+        f"🧾 <b>ЗАКАЗ:</b>\n\n"
+        f"📦 {TIER_INFO[tier]['emoji']} {TIER_INFO[tier]['name']}\n"
+        f"├ CPU: {TIER_INFO[tier]['cpu']}\n"
+        f"├ RAM: {TIER_INFO[tier]['ram']}\n"
+        f"└ Скриптов: {TIER_INFO[tier]['scripts']}\n\n"
         f"📅 {DAYS_NAMES[days]}\n"
         f"💰 Итого: {total}₽\n"
         f"💳 Баланс: {balance}₽",
@@ -983,7 +1019,7 @@ async def shop_select_days(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data.startswith("pay:"))
 async def process_payment(callback: CallbackQuery, state: FSMContext):
-    _, location, tier, days = callback.data.split(":")
+    _, tier, days = callback.data.split(":")
     total = calc_price(tier, days)
     uid = callback.from_user.id
     
@@ -997,12 +1033,12 @@ async def process_payment(callback: CallbackQuery, state: FSMContext):
         conn.commit()
     
     days_int = 7 if days=='7' else 30 if days=='30' else 90
-    sub_type = 'basic' if tier in ['1','2'] else 'pro' if tier in ['3','4'] else 'expert'
-    set_subscription(uid, sub_type, days_int, tier, location)
+    sub_type = 'pro'
+    set_subscription(uid, sub_type, days_int, tier, tier)
     
     await callback.message.edit_text(
-        f"✅ ПРЕМИУМ АКТИВИРОВАН!\n\n"
-        f"📦 {TIER_INFO[tier]['name']}\n"
+        f"✅ <b>ТАРИФ АКТИВИРОВАН!</b>\n\n"
+        f"📦 {TIER_INFO[tier]['emoji']} {TIER_INFO[tier]['name']}\n"
         f"📅 {DAYS_NAMES[days]}\n"
         f"💰 Списано: {total}₽\n\n"
         f"🎉 Увеличенные лимиты доступны!"
@@ -1021,7 +1057,7 @@ async def close_menu(callback: CallbackQuery):
 @dp.message(F.text == "🆘 Поддержка")
 async def btn_support(message: Message):
     await message.answer(
-        "🆘 ПОДДЕРЖКА\n\n"
+        "🆘 <b>ПОДДЕРЖКА</b>\n\n"
         "Выберите способ связи:",
         reply_markup=support_keyboard()
     )
@@ -1030,7 +1066,7 @@ async def btn_support(message: Message):
 async def chat_to_admin(callback: CallbackQuery, state: FSMContext):
     await state.set_state(SupportStates.waiting_message)
     await callback.message.answer(
-        "💬 ЧАТ С АДМИНОМ\n\n"
+        "💬 <b>ЧАТ С АДМИНОМ</b>\n\n"
         "Отправьте ваше сообщение.\n"
         "❌ /cancel для отмены"
     )
@@ -1056,9 +1092,9 @@ async def process_support_message(message: Message, state: FSMContext):
             if message.text:
                 await bot.send_message(
                     aid, 
-                    f"📩 СООБЩЕНИЕ\n"
+                    f"📩 <b>СООБЩЕНИЕ</b>\n"
                     f"👤 {username}\n"
-                    f"🆔 {uid}\n\n"
+                    f"🆔 <code>{uid}</code>\n\n"
                     f"💬 {message.text}",
                     reply_markup=kb.as_markup()
                 )
@@ -1066,14 +1102,14 @@ async def process_support_message(message: Message, state: FSMContext):
                 await bot.send_photo(
                     aid, 
                     message.photo[-1].file_id,
-                    caption=f"📩 ФОТО\n👤 {username}\n🆔 {uid}",
+                    caption=f"📩 <b>ФОТО</b>\n👤 {username}\n🆔 <code>{uid}</code>",
                     reply_markup=kb.as_markup()
                 )
         except Exception as e:
             logger.error(f"Error sending to admin: {e}")
     
     await state.clear()
-    await message.answer("✅ Отправлено!", reply_markup=user_keyboard())
+    await message.answer("✅ <b>Отправлено!</b>", reply_markup=user_keyboard())
 
 @dp.callback_query(F.data.startswith("reply_to:"))
 async def reply_to_user(callback: CallbackQuery, state: FSMContext):
@@ -1099,9 +1135,9 @@ async def send_reply(message: Message, state: FSMContext):
     
     try:
         if message.text:
-            await bot.send_message(uid, f"📩 Ответ от админа:\n\n{message.text}")
+            await bot.send_message(uid, f"📩 <b>Ответ от админа:</b>\n\n{message.text}")
         elif message.photo:
-            await bot.send_photo(uid, message.photo[-1].file_id, caption="📩 Ответ от админа")
+            await bot.send_photo(uid, message.photo[-1].file_id, caption="📩 <b>Ответ от админа</b>")
         
         await message.answer("✅ Ответ отправлен!")
     except Exception as e:
@@ -1114,9 +1150,9 @@ async def send_reply(message: Message, state: FSMContext):
 async def admin_give_subscription_start(message: Message, state: FSMContext):
     await state.set_state(AdminSubStates.waiting_user_id)
     await message.answer(
-        "🎁 ВЫДАЧА ПОДПИСКИ\n\n"
+        "🎁 <b>ВЫДАЧА ПОДПИСКИ</b>\n\n"
         "Отправьте ID пользователя:\n"
-        "Пример: 123456789\n\n"
+        "Пример: <code>123456789</code>\n\n"
         "❌ /cancel для отмены"
     )
 
@@ -1141,38 +1177,15 @@ async def admin_give_subscription_user_id(message: Message, state: FSMContext):
     await state.update_data(target_uid=uid, target_username=user.get('username', 'Нет'))
     
     kb = InlineKeyboardBuilder()
-    for loc_id, loc_data in LOCATIONS.items():
-        kb.button(text=f"{loc_data['flag']} {loc_data['name']}", callback_data=f"admin_sub_loc:{loc_id}")
-    kb.button(text="❌ Отмена", callback_data="admin_sub_cancel")
-    kb.adjust(2)
-    
-    await message.answer(
-        f"👤 Пользователь: {uid} (@{user.get('username', 'Нет')})\n\n"
-        f"🌍 Выберите локацию:",
-        reply_markup=kb.as_markup()
-    )
-
-@dp.callback_query(F.data.startswith("admin_sub_loc:"), AdminFilter())
-async def admin_sub_select_location(callback: CallbackQuery, state: FSMContext):
-    loc = callback.data.split(":")[1]
-    await state.update_data(admin_loc=loc)
-    
-    max_tier = LOCATIONS[loc]['max_tiers']
-    kb = InlineKeyboardBuilder()
-    for t_id in ["1","2","3","4","5"]:
-        if int(t_id) <= max_tier:
-            t_data = TIER_INFO[t_id]
-            kb.button(
-                text=f"{t_data['name']}: {t_data['cpu']} | {t_data['ram']}", 
-                callback_data=f"admin_sub_tier:{t_id}"
-            )
-    kb.button(text="◀️ Назад", callback_data="admin_sub_back_to_loc")
+    for tier_id in ["1", "2", "3"]:
+        t = TIER_INFO[tier_id]
+        kb.button(text=f"{t['emoji']} {t['name']}", callback_data=f"admin_sub_tier:{tier_id}")
     kb.button(text="❌ Отмена", callback_data="admin_sub_cancel")
     kb.adjust(1)
     
-    await callback.message.edit_text(
-        f"📍 {LOCATIONS[loc]['flag']} {LOCATIONS[loc]['name']}\n\n"
-        f"⚙️ Выберите тариф:",
+    await message.answer(
+        f"👤 Пользователь: <code>{uid}</code> (@{user.get('username', 'Нет')})\n\n"
+        f"📦 <b>Выберите тариф:</b>",
         reply_markup=kb.as_markup()
     )
 
@@ -1191,11 +1204,8 @@ async def admin_sub_select_tier(callback: CallbackQuery, state: FSMContext):
     kb.adjust(2)
     
     await callback.message.edit_text(
-        f"📦 {TIER_INFO[tier]['name']}\n"
-        f"├ CPU: {TIER_INFO[tier]['cpu']}\n"
-        f"├ RAM: {TIER_INFO[tier]['ram']}\n"
-        f"└ Скриптов: {TIER_INFO[tier]['scripts']}\n\n"
-        f"📅 Выберите срок:",
+        f"{TIER_INFO[tier]['emoji']} <b>{TIER_INFO[tier]['name']}</b>\n\n"
+        f"📅 <b>Выберите срок:</b>",
         reply_markup=kb.as_markup()
     )
 
@@ -1206,27 +1216,23 @@ async def admin_sub_select_days(callback: CallbackQuery, state: FSMContext):
     
     target_uid = data.get('target_uid')
     target_username = data.get('target_username')
-    loc = data.get('admin_loc')
     tier = data.get('admin_tier')
     
-    sub_type = 'basic' if tier in ['1','2'] else 'pro' if tier in ['3','4'] else 'expert'
-    set_subscription(target_uid, sub_type, days, tier, loc)
+    sub_type = 'pro'
+    set_subscription(target_uid, sub_type, days, tier, tier)
     
     await callback.message.edit_text(
-        f"✅ ПОДПИСКА ВЫДАНА!\n\n"
-        f"👤 Пользователь: {target_uid} (@{target_username})\n"
-        f"📍 {LOCATIONS[loc]['flag']} {LOCATIONS[loc]['name']}\n"
-        f"📦 {TIER_INFO[tier]['name']}\n"
-        f"📅 {days} дней\n"
-        f"💎 Тип: {sub_type.upper()}"
+        f"✅ <b>ПОДПИСКА ВЫДАНА!</b>\n\n"
+        f"👤 Пользователь: <code>{target_uid}</code> (@{target_username})\n"
+        f"📦 {TIER_INFO[tier]['emoji']} {TIER_INFO[tier]['name']}\n"
+        f"📅 {days} дней"
     )
     
     try:
         await bot.send_message(
             target_uid,
-            f"🎁 Администратор выдал вам подписку!\n\n"
-            f"📍 {LOCATIONS[loc]['flag']} {LOCATIONS[loc]['name']}\n"
-            f"📦 {TIER_INFO[tier]['name']}\n"
+            f"🎁 <b>Администратор выдал вам подписку!</b>\n\n"
+            f"📦 {TIER_INFO[tier]['emoji']} {TIER_INFO[tier]['name']}\n"
             f"📅 {days} дней\n\n"
             f"🎉 Подписка активирована!"
         )
@@ -1235,49 +1241,22 @@ async def admin_sub_select_days(callback: CallbackQuery, state: FSMContext):
     
     await state.clear()
 
-@dp.callback_query(F.data == "admin_sub_back_to_loc")
-async def admin_sub_back_to_loc(callback: CallbackQuery, state: FSMContext):
+@dp.callback_query(F.data == "admin_sub_back_to_tier")
+async def admin_sub_back_to_tier(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     target_uid = data.get('target_uid')
     target_username = data.get('target_username')
     
     kb = InlineKeyboardBuilder()
-    for loc_id, loc_data in LOCATIONS.items():
-        kb.button(text=f"{loc_data['flag']} {loc_data['name']}", callback_data=f"admin_sub_loc:{loc_id}")
-    kb.button(text="❌ Отмена", callback_data="admin_sub_cancel")
-    kb.adjust(2)
-    
-    await callback.message.edit_text(
-        f"👤 Пользователь: {target_uid} (@{target_username})\n\n"
-        f"🌍 Выберите локацию:",
-        reply_markup=kb.as_markup()
-    )
-
-@dp.callback_query(F.data == "admin_sub_back_to_tier")
-async def admin_sub_back_to_tier(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    loc = data.get('admin_loc')
-    if not loc:
-        await callback.message.edit_text("❌ Сессия устарела")
-        await state.clear()
-        return
-    
-    max_tier = LOCATIONS[loc]['max_tiers']
-    kb = InlineKeyboardBuilder()
-    for t_id in ["1","2","3","4","5"]:
-        if int(t_id) <= max_tier:
-            t_data = TIER_INFO[t_id]
-            kb.button(
-                text=f"{t_data['name']}: {t_data['cpu']} | {t_data['ram']}", 
-                callback_data=f"admin_sub_tier:{t_id}"
-            )
-    kb.button(text="◀️ Назад", callback_data="admin_sub_back_to_loc")
+    for tier_id in ["1", "2", "3"]:
+        t = TIER_INFO[tier_id]
+        kb.button(text=f"{t['emoji']} {t['name']}", callback_data=f"admin_sub_tier:{tier_id}")
     kb.button(text="❌ Отмена", callback_data="admin_sub_cancel")
     kb.adjust(1)
     
     await callback.message.edit_text(
-        f"📍 {LOCATIONS[loc]['flag']} {LOCATIONS[loc]['name']}\n\n"
-        f"⚙️ Выберите тариф:",
+        f"👤 Пользователь: <code>{target_uid}</code> (@{target_username})\n\n"
+        f"📦 <b>Выберите тариф:</b>",
         reply_markup=kb.as_markup()
     )
 
@@ -1293,7 +1272,7 @@ async def admin_remove_subscription(message: Message, state: FSMContext):
     await state.set_state(AdminSubStates.waiting_user_id)
     await state.update_data(action='remove_sub')
     await message.answer(
-        "❌ ОТЗЫВ ПОДПИСКИ\n\n"
+        "❌ <b>ОТЗЫВ ПОДПИСКИ</b>\n\n"
         "Отправьте ID пользователя:\n"
         "❌ /cancel для отмены"
     )
@@ -1313,14 +1292,13 @@ async def stop_bot(message: Message):
             update_script_status(s['id'], 'stopped')
             stopped += 1
     
-    await message.answer(f"🔴 БОТ ОСТАНОВЛЕН!\n\n⏹ Остановлено хостов: {stopped}")
+    await message.answer(f"🔴 <b>БОТ ОСТАНОВЛЕН!</b>\n\n⏹ Остановлено хостов: {stopped}")
 
 @dp.message(F.text == "🟢 Старт бот", AdminFilter())
 async def start_bot(message: Message):
     global bot_active
     bot_active = True
-    
-    await message.answer("🟢 БОТ ЗАПУЩЕН!")
+    await message.answer("🟢 <b>БОТ ЗАПУЩЕН!</b>")
 
 # ========== АДМИН-ПАНЕЛЬ ==========
 @dp.message(F.text == "📊 Статистика", AdminFilter())
@@ -1332,7 +1310,7 @@ async def admin_stats(message: Message):
     total_balance = sum(x.get('balance', 0) for x in u)
     
     await message.answer(
-        f"📊 СТАТИСТИКА\n\n"
+        f"📊 <b>СТАТИСТИКА</b>\n\n"
         f"👥 Всего: {len(u)}\n"
         f"├ 🆓 Бесплатных: {len(u) - premium}\n"
         f"└ 💎 Премиум: {premium}\n"
@@ -1348,13 +1326,10 @@ async def admin_users(message: Message):
         await message.answer("Нет пользователей")
         return
     
-    text = f"👥 ПОЛЬЗОВАТЕЛИ ({len(users)})\n\n"
+    text = f"👥 <b>ПОЛЬЗОВАТЕЛИ ({len(users)})</b>\n\n"
     for i, u in enumerate(users[:20], 1):
         sub = "💎" if u.get('is_premium') else "🆓"
-        text += f"{i}. {sub} {u['user_id']} | {u.get('username', 'Нет')} | {u.get('balance', 0)}₽\n"
-    
-    if len(users) > 20:
-        text += f"\n... и ещё {len(users)-20}"
+        text += f"{i}. {sub} <code>{u['user_id']}</code> | {u.get('username', 'Нет')} | {u.get('balance', 0)}₽\n"
     
     await message.answer(text)
 
@@ -1365,10 +1340,10 @@ async def admin_scripts(message: Message):
         await message.answer("Нет хостов")
         return
     
-    text = f"📦 ХОСТЫ ({len(scripts)})\n\n"
+    text = f"📦 <b>ХОСТЫ ({len(scripts)})</b>\n\n"
     for i, s in enumerate(scripts[:15], 1):
         st = "🟢" if s['status']=='running' else "🔴"
-        text += f"{i}. {st} {s['id']} | {s['name']} | user:{s['user_id']}\n"
+        text += f"{i}. {st} <code>{s['id']}</code> | {s['name']} | user:{s['user_id']}\n"
     
     await message.answer(text)
 
@@ -1377,10 +1352,10 @@ async def toggle_admin_mode(message: Message):
     uid = message.from_user.id
     if admin_mode.get(uid, True):
         admin_mode[uid] = False
-        await message.answer("👤 Режим пользователя\n/admin для возврата", reply_markup=user_keyboard())
+        await message.answer("👤 <b>Режим пользователя</b>\n/admin для возврата", reply_markup=user_keyboard())
     else:
         admin_mode[uid] = True
-        await message.answer("👑 Режим админа", reply_markup=admin_keyboard())
+        await message.answer("👑 <b>Режим админа</b>", reply_markup=admin_keyboard())
 
 # ========== ПРОФИЛЬ И БАЛАНС ==========
 @dp.message(F.text == "👤 Профиль")
@@ -1394,8 +1369,8 @@ async def btn_profile(message: Message):
     mx_scripts, mx_size = get_user_limits(uid)
     
     text = (
-        f"👤 ПРОФИЛЬ\n\n"
-        f"├ 🆔 ID: {uid}\n"
+        f"👤 <b>ПРОФИЛЬ</b>\n\n"
+        f"├ 🆔 ID: <code>{uid}</code>\n"
         f"├ 👤 @{user.get('username', 'Нет')}\n"
         f"├ 💰 Баланс: {user.get('balance', 0):.2f}₽\n"
         f"├ 📋 Тариф: {sub_info}\n"
@@ -1426,7 +1401,7 @@ async def process_promo(message: Message, state: FSMContext):
     
     success, msg = activate_promo(uid, code)
     if success:
-        await message.answer(f"✅ {msg}")
+        await message.answer(f"✅ <b>{msg}</b>")
     else:
         await message.answer(f"❌ {msg}")
     
@@ -1438,7 +1413,7 @@ async def btn_deposit(message: Message):
     kb.button(text="💳 Карта/СБП", callback_data="dep_card")
     kb.button(text="⭐ Stars", callback_data="dep_stars")
     kb.adjust(1)
-    await message.answer("💳 ПОПОЛНЕНИЕ БАЛАНСА\n\n👇 Выберите способ:", reply_markup=kb.as_markup())
+    await message.answer("💳 <b>ПОПОЛНЕНИЕ БАЛАНСА</b>\n\n👇 Выберите способ:", reply_markup=kb.as_markup())
 
 @dp.callback_query(F.data == "dep_card")
 async def dep_card(callback: CallbackQuery, state: FSMContext):
@@ -1468,10 +1443,10 @@ async def process_deposit_amount(message: Message, state: FSMContext):
                 return
             pending_payments[message.from_user.id] = {'type': 'balance', 'amount': amount}
             await message.answer(
-                f"💳 ОПЛАТА\n\n"
+                f"💳 <b>ОПЛАТА</b>\n\n"
                 f"💰 Сумма: {amount}₽\n"
                 f"🏦 Банк: СБЕР\n"
-                f"💳 Номер: 2202206714879132\n\n"
+                f"💳 Номер: <code>2202206714879132</code>\n\n"
                 f"📸 Отправьте скриншот оплаты"
             )
         
@@ -1553,9 +1528,16 @@ async def main():
     init_db()
     await bot.set_my_commands([BotCommand(command="start", description="🚀 Главное меню")])
     await bot.delete_webhook(drop_pending_updates=True)
-    logger.info(f"🚀 Hosting Bot v{VERSION} запущен!")
+    logger.info(f"🚀 Hosting Bot v{VERSION} запущен! Тарифы от 29₽!")
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
-    print(f"🚀 Hosting Bot v{VERSION} starting...")
+    print(f"""
+╔══════════════════════════════════════════╗
+║     🚀 Hosting Bot v{VERSION}                ║
+║     🌱 Новичок: 29₽                      ║
+║     ⚡ Стандарт: 49₽                     ║
+║     👑 Эксперт: 79₽                      ║
+╚══════════════════════════════════════════╝
+    """)
     asyncio.run(main())
