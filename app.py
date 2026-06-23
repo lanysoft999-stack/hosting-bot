@@ -30,7 +30,7 @@ import sqlite3
 # ==========================================================
 #  1. НАСТРОЙКИ
 # ==========================================================
-TOKEN = "1456462948:AAH1wfMw5sxS9p4niC3yjoxO-ndhD3xC1gY"
+TOKEN = "1456462948:AAEoNXLuUJF3OwjdF9b1t7aREerbgybFH0o"
 ADMIN_IDS = [314148464]
 
 FREE_SCRIPTS = 5
