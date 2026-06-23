@@ -1,14 +1,12 @@
 services:
   - type: web
     name: ohoster-bot
-    env: python
-    region: frankfurt
-    buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    runtime: python
     plan: free
-    autoDeploy: false
+    autoDeploy: true
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app --bind 0.0.0.0:8000"
     envVars:
       - key: PORT
-        value: "10000"
-      - key: PYTHON_VERSION
-        value: "3.11.0"
+        value: 8000
+    healthCheckPath: /
