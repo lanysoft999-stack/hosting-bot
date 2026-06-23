@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ohoster-bot
+    env: go
+    region: frankfurt
+    buildCommand: go build -o bot main.go
+    startCommand: ./bot
+    plan: free
+    autoDeploy: false
+    envVars:
+      - key: PORT
+        value: "10000"
