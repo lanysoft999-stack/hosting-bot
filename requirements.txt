@@ -1,2 +1,4 @@
-pyTelegramBotAPI
-requests
+Flask==2.2.5
+Pyrogram==2.0.106
+SQLAlchemy==2.0.23
+aiohttp==3.9.5
