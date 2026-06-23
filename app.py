@@ -24,7 +24,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 # ==========================================================
 #  1. НАСТРОЙКИ (Здесь вставь свой НОВЫЙ токен)
 # ==========================================================
-TOKEN = "8810746051:AAGOX0WDFdA6ZyJYUghxw4efnEsw8hpAE4c"
+TOKEN = "1456462948:AAHWBGmZBbb2B5lg-lTRAGXf-YhMAVwMTwM"
 ADMIN_IDS = [314148464]
 
 FREE_SCRIPTS = 5
