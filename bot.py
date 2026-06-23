@@ -1,4 +1,4 @@
-# bot.py - Ohoster Hosting Bot (ФИНАЛЬНАЯ ВЕРСИЯ)
+# bot.py - Ohoster Hosting Bot (ТОЛЬКО РАБОЧИЕ ФУНКЦИИ)
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
@@ -11,16 +11,15 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 TOKEN = "1456462948:AAH1wfMw5sxS9p4niC3yjoxO-ndhD3xC1gY"
 ADMIN_IDS = [314148464]
 PORT = int(os.environ.get('PORT', 10000))
-FREE_SCRIPTS = 3
-FREE_SIZE_MB = 5
+FREE_SCRIPTS = 5
+FREE_SIZE_MB = 10
 
 BASE_DIR = Path(__file__).parent
 SCRIPTS_DIR = BASE_DIR / "scripts"
 TEMP_DIR = BASE_DIR / "temp"
-FILES_DIR = BASE_DIR / "user_files"
 DB_PATH = BASE_DIR / "bot.db"
 
-for d in [SCRIPTS_DIR, TEMP_DIR, FILES_DIR]:
+for d in [SCRIPTS_DIR, TEMP_DIR]:
     d.mkdir(exist_ok=True)
 
 # ========== БД ==========
@@ -28,7 +27,6 @@ def init_db():
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute('CREATE TABLE IF NOT EXISTS scripts (id TEXT, user_id INTEGER, name TEXT, path TEXT, status TEXT, size INTEGER)')
     conn.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT)')
-    conn.execute('CREATE TABLE IF NOT EXISTS banned (user_id INTEGER PRIMARY KEY)')
     conn.commit()
     conn.close()
 
@@ -52,36 +50,25 @@ def count_scripts(uid):
     conn.close()
     return cnt
 
-def is_banned(uid):
-    conn = sqlite3.connect(str(DB_PATH))
-    banned = conn.execute('SELECT * FROM banned WHERE user_id=?', (uid,)).fetchone()
-    conn.close()
-    return banned is not None
-
 def get_all_users():
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
-    rows = conn.execute('SELECT * FROM users ORDER BY rowid DESC').fetchall()
+    rows = conn.execute('SELECT * FROM users').fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 # ========== ЗАПУСК СКРИПТА ==========
 def run_script(path):
-    for f in Path(path).rglob("*.py"):
-        if f.name in ('main.py', 'bot.py'):
-            try:
-                proc = subprocess.Popen([sys.executable, str(f)], cwd=str(path), 
-                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-                return proc.pid
-            except: pass
     py_files = list(Path(path).rglob("*.py"))
-    if py_files:
-        try:
-            proc = subprocess.Popen([sys.executable, str(py_files[0])], cwd=str(path),
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-            return proc.pid
-        except: pass
-    return None
+    if not py_files: return None
+    main = py_files[0]
+    for f in py_files:
+        if f.name == 'main.py': main = f; break
+    try:
+        proc = subprocess.Popen([sys.executable, str(main)], cwd=str(path),
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return proc.pid
+    except: return None
 
 # ========== ВЕБ-СЕРВЕР ==========
 class Handler(BaseHTTPRequestHandler):
@@ -97,10 +84,7 @@ bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
 bot.remove_webhook()
 time.sleep(3)
 
-bot_active = True
 waiting = set()
-broadcast_set = set()
-admin_act = {}
 
 def user_kb():
     kb = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -110,20 +94,14 @@ def user_kb():
 
 def admin_kb():
     kb = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    kb.add("👥 Пользователи", "📊 Статистика")
-    kb.add("📨 Рассылка", "📦 Все хосты")
-    kb.add("📥 Файлы юзера", "🗑 Удалить хосты")
-    kb.add("🚫 Забанить", "🟢 Разбанить")
-    kb.add("🛑 Стоп бот" if bot_active else "🟢 Старт бот", "👤 Юзер")
+    kb.add("📊 Статистика", "👥 Пользователи")
+    kb.add("📤 Загрузить", "💻 Мои хосты")
     return kb
 
 # ========== СТАРТ ==========
 @bot.message_handler(commands=['start'])
 def start(message):
     uid = message.from_user.id
-    
-    if is_banned(uid) and uid not in ADMIN_IDS:
-        return bot.send_message(uid, "🚫 ВЫ ЗАБАНЕНЫ!")
     
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute('INSERT OR IGNORE INTO users VALUES (?,?)', (uid, message.from_user.username))
@@ -149,17 +127,12 @@ def start(message):
         f"➪ Упало сервисов: {stopped}\n"
         f"➪ Сервисов запущено: {running}"
     )
-    
     bot.send_message(uid, text, reply_markup=user_kb())
 
 # ========== ЗАГРУЗКА ==========
 @bot.message_handler(func=lambda m: m.text == '📤 Загрузить')
 def upload(message):
     uid = message.from_user.id
-    if not bot_active and uid not in ADMIN_IDS:
-        return bot.send_message(uid, "🔴 Бот на обслуживании!")
-    if is_banned(uid):
-        return bot.send_message(uid, "🚫 Вы забанены!")
     if count_scripts(uid) >= FREE_SCRIPTS:
         return bot.send_message(uid, f"❌ Лимит {FREE_SCRIPTS} скриптов!")
     waiting.add(uid)
@@ -168,8 +141,6 @@ def upload(message):
 @bot.message_handler(content_types=['document'])
 def handle_doc(message):
     uid = message.from_user.id
-    if not bot_active and uid not in ADMIN_IDS:
-        return bot.send_message(uid, "🔴 Бот на обслуживании!")
     if uid not in waiting: return
     
     doc = message.document; fn = doc.file_name; fs = doc.file_size
@@ -182,26 +153,29 @@ def handle_doc(message):
     msg = bot.send_message(uid, "📥 Загрузка...")
     
     try:
+        # Скачиваем файл
         fi = bot.get_file(doc.file_id)
         url = f"https://api.telegram.org/file/bot{TOKEN}/{fi.file_path}"
         dl = requests.get(url).content
         
-        tmp = TEMP_DIR / str(uid) / uuid.uuid4().hex[:8]; tmp.mkdir(parents=True, exist_ok=True)
-        (tmp/fn).write_bytes(dl)
+        # Временная папка
+        tmp = TEMP_DIR / str(uid) / uuid.uuid4().hex[:8]
+        tmp.mkdir(parents=True, exist_ok=True)
+        (tmp / fn).write_bytes(dl)
         
+        # Папка скрипта
         sid = uuid.uuid4().hex[:8]
-        sdir = SCRIPTS_DIR / str(uid) / sid; sdir.mkdir(parents=True, exist_ok=True)
-        
-        # Сохраняем в файлы пользователя
-        user_dir = FILES_DIR / str(uid); user_dir.mkdir(exist_ok=True)
-        (user_dir / fn).write_bytes(dl)
+        sdir = SCRIPTS_DIR / str(uid) / sid
+        sdir.mkdir(parents=True, exist_ok=True)
         
         if fn.endswith('.zip'):
             with zipfile.ZipFile(tmp/fn) as z: z.extractall(sdir)
             ts = sum(f.stat().st_size for f in sdir.rglob('*') if f.is_file())
         else:
-            shutil.copy2(str(tmp/fn), str(sdir/fn)); ts = fs
+            shutil.copy2(str(tmp/fn), str(sdir/fn))
+            ts = fs
         
+        # Запускаем
         bot.edit_message_text("⚡ Запуск...", uid, msg.message_id)
         pid = run_script(str(sdir))
         
@@ -226,7 +200,8 @@ def handle_doc(message):
 # ========== ХОСТЫ ==========
 @bot.message_handler(func=lambda m: m.text == '💻 Мои хосты')
 def hosts(message):
-    uid = message.from_user.id; scripts = get_scripts(uid)
+    uid = message.from_user.id
+    scripts = get_scripts(uid)
     
     if not scripts:
         kb = InlineKeyboardMarkup()
@@ -234,13 +209,8 @@ def hosts(message):
         return bot.send_message(uid, "😔 <b>Нет сервисов</b>", reply_markup=kb)
     
     running = sum(1 for s in scripts if s['status']=='running')
-    stopped = len(scripts) - running
-    uptime = round((running/len(scripts))*100) if len(scripts) > 0 else 0
     
-    text = (
-        f"💻 <b>МОИ СЕРВИСЫ</b>\n\n"
-        f"🟢 {running} | 🔴 {stopped} | 📈 {uptime}%\n\n"
-    )
+    text = f"💻 <b>МОИ СЕРВИСЫ</b>\n\n🟢 {running} | 🔴 {len(scripts)-running}\n\n"
     
     kb = InlineKeyboardMarkup()
     for i, s in enumerate(scripts, 1):
@@ -248,8 +218,8 @@ def hosts(message):
         sz = (s['size'] or 0)/1024/1024
         text += f"{st} <b>{s['name']}</b> | {sz:.1f}МБ | <code>{s['id']}</code>\n"
         kb.add(
-            InlineKeyboardButton(f"⏹ Стоп {i}" if s['status']=='running' else f"▶️ Старт {i}", callback_data=f"stop:{s['id']}"),
-            InlineKeyboardButton(f"🗑 Удалить {i}", callback_data=f"del:{s['id']}")
+            InlineKeyboardButton(f"⏹ {i}" if s['status']=='running' else f"▶️ {i}", callback_data=f"stop:{s['id']}"),
+            InlineKeyboardButton(f"🗑 {i}", callback_data=f"del:{s['id']}")
         )
     kb.add(InlineKeyboardButton("📤 Загрузить ещё", callback_data="upload_btn"))
     bot.send_message(uid, text, reply_markup=kb)
@@ -269,7 +239,15 @@ def help_cmd(message):
     text = f"🆘 <b>ПОМОЩЬ</b>\n\n📤 Загрузить - .py или .zip\n💻 Мои хосты - управление\n👤 Профиль - статистика\n\n📦 Лимит: {FREE_SCRIPTS} скриптов\n📊 Размер: до {FREE_SIZE_MB}МБ"
     bot.send_message(message.chat.id, text)
 
-# ========== АДМИН КОМАНДЫ ==========
+# ========== АДМИН ==========
+@bot.message_handler(func=lambda m: m.text == '📊 Статистика' and m.from_user.id in ADMIN_IDS)
+def stats(message):
+    users = get_all_users()
+    scripts = get_all_scripts()
+    running = sum(1 for s in scripts if s['status']=='running')
+    text = f"📊 <b>СТАТИСТИКА</b>\n\n👥 {len(users)}\n📦 {len(scripts)} (🟢{running})"
+    bot.send_message(message.chat.id, text)
+
 @bot.message_handler(func=lambda m: m.text == '👥 Пользователи' and m.from_user.id in ADMIN_IDS)
 def admin_users(message):
     users = get_all_users()
@@ -278,144 +256,7 @@ def admin_users(message):
     for u in users[:20]:
         cnt = count_scripts(u['user_id'])
         text += f"🆔 <code>{u['user_id']}</code> | @{u.get('username','?')} | 📦{cnt}\n"
-    if len(users) > 20: text += f"\n... и ещё {len(users)-20}"
     bot.send_message(message.chat.id, text)
-
-@bot.message_handler(func=lambda m: m.text == '📊 Статистика' and m.from_user.id in ADMIN_IDS)
-def stats(message):
-    users = get_all_users()
-    scripts = get_all_scripts()
-    running = sum(1 for s in scripts if s['status']=='running')
-    total_size = sum(s.get('size',0) or 0 for s in scripts)
-    text = f"📊 <b>СТАТИСТИКА</b>\n\n👥 {len(users)}\n📦 {len(scripts)} (🟢{running})\n💾 {total_size/1024/1024:.1f}МБ"
-    bot.send_message(message.chat.id, text)
-
-@bot.message_handler(func=lambda m: m.text == '📨 Рассылка' and m.from_user.id in ADMIN_IDS)
-def broadcast(message):
-    broadcast_set.add(message.from_user.id)
-    bot.send_message(message.chat.id, "📨 Отправьте сообщение (текст/фото):")
-
-@bot.message_handler(func=lambda m: m.text == '📦 Все хосты' and m.from_user.id in ADMIN_IDS)
-def all_hosts(message):
-    scripts = get_all_scripts()
-    if not scripts: return bot.send_message(message.chat.id, "Нет хостов")
-    text = f"📦 <b>ВСЕ ХОСТЫ ({len(scripts)})</b>\n\n"
-    for s in scripts[:15]:
-        st = "🟢" if s['status']=='running' else "🔴"
-        text += f"{st} <b>{s['name']}</b> | user{s['user_id']}\n<code>{s['id']}</code>\n\n"
-    if len(scripts) > 15: text += f"... и ещё {len(scripts)-15}"
-    bot.send_message(message.chat.id, text)
-
-@bot.message_handler(func=lambda m: m.text == '📥 Файлы юзера' and m.from_user.id in ADMIN_IDS)
-def get_files(message):
-    admin_act[message.from_user.id] = 'get_files'
-    bot.send_message(message.chat.id, "🆔 ID пользователя:")
-
-@bot.message_handler(func=lambda m: m.text == '🗑 Удалить хосты' and m.from_user.id in ADMIN_IDS)
-def del_hosts(message):
-    admin_act[message.from_user.id] = 'del_hosts'
-    bot.send_message(message.chat.id, "🆔 ID пользователя:")
-
-@bot.message_handler(func=lambda m: m.text == '🚫 Забанить' and m.from_user.id in ADMIN_IDS)
-def ban_user_btn(message):
-    admin_act[message.from_user.id] = 'ban'
-    bot.send_message(message.chat.id, "🆔 ID для бана:")
-
-@bot.message_handler(func=lambda m: m.text == '🟢 Разбанить' and m.from_user.id in ADMIN_IDS)
-def unban_user_btn(message):
-    admin_act[message.from_user.id] = 'unban'
-    bot.send_message(message.chat.id, "🆔 ID для разбана:")
-
-@bot.message_handler(func=lambda m: m.text in ['🛑 Стоп бот', '🟢 Старт бот'] and m.from_user.id in ADMIN_IDS)
-def toggle_bot(message):
-    global bot_active
-    bot_active = not bot_active
-    if not bot_active:
-        for s in get_all_scripts():
-            if s['status'] == 'running':
-                conn = sqlite3.connect(str(DB_PATH))
-                conn.execute('UPDATE scripts SET status=? WHERE id=?', ('stopped', s['id']))
-                conn.commit(); conn.close()
-    bot.send_message(message.chat.id, "🔴 Бот остановлен!" if not bot_active else "🟢 Бот запущен!", reply_markup=admin_kb())
-
-@bot.message_handler(func=lambda m: m.text == '👤 Юзер' and m.from_user.id in ADMIN_IDS)
-def user_mode(message):
-    bot.send_message(message.chat.id, "👤 Режим пользователя", reply_markup=user_kb())
-
-# ========== ТЕКСТ ==========
-@bot.message_handler(content_types=['text'])
-def handle_text(message):
-    uid = message.from_user.id; text = message.text.strip() if message.text else ""
-    
-    # Рассылка
-    if uid in broadcast_set:
-        broadcast_set.discard(uid)
-        users = get_all_users()
-        sent = 0
-        for u in users:
-            try: bot.send_message(u['user_id'], f"📢 <b>Рассылка Ohoster</b>\n\n{text}"); sent += 1
-            except: pass; time.sleep(0.03)
-        bot.send_message(uid, f"✅ Отправлено: {sent}/{len(users)}")
-        return
-    
-    # Админ действия
-    if uid in admin_act:
-        action = admin_act.pop(uid)
-        try: target = int(text)
-        except: return bot.send_message(uid, "❌ Неверный ID")
-        
-        if action == 'get_files':
-            user_dir = FILES_DIR / str(target)
-            if user_dir.exists() and list(user_dir.iterdir()):
-                for f in user_dir.iterdir():
-                    if f.is_file():
-                        with open(f, 'rb') as file:
-                            bot.send_document(uid, file, caption=f"📄 {f.name}")
-                bot.send_message(uid, "✅ Файлы отправлены!")
-            else:
-                bot.send_message(uid, "❌ Нет файлов")
-        
-        elif action == 'del_hosts':
-            conn = sqlite3.connect(str(DB_PATH))
-            scripts = conn.execute('SELECT * FROM scripts WHERE user_id=?', (target,)).fetchall()
-            for s in scripts: shutil.rmtree(s[3], ignore_errors=True)
-            conn.execute('DELETE FROM scripts WHERE user_id=?', (target,))
-            conn.commit(); conn.close()
-            bot.send_message(uid, f"✅ Хосты user{target} удалены!")
-        
-        elif action == 'ban':
-            conn = sqlite3.connect(str(DB_PATH))
-            conn.execute('INSERT OR REPLACE INTO banned VALUES (?)', (target,))
-            scripts = conn.execute('SELECT * FROM scripts WHERE user_id=?', (target,)).fetchall()
-            for s in scripts: shutil.rmtree(s[3], ignore_errors=True)
-            conn.execute('DELETE FROM scripts WHERE user_id=?', (target,))
-            conn.commit(); conn.close()
-            bot.send_message(uid, f"🚫 user{target} забанен!")
-            try: bot.send_message(target, "🚫 Вы забанены в Ohoster!")
-            except: pass
-        
-        elif action == 'unban':
-            conn = sqlite3.connect(str(DB_PATH))
-            conn.execute('DELETE FROM banned WHERE user_id=?', (target,))
-            conn.commit(); conn.close()
-            bot.send_message(uid, f"🟢 user{target} разбанен!")
-            try: bot.send_message(target, "🟢 Вы разбанены в Ohoster!")
-            except: pass
-        return
-
-# ========== ФОТО ==========
-@bot.message_handler(content_types=['photo'])
-def handle_photo(message):
-    uid = message.from_user.id
-    if uid in broadcast_set:
-        broadcast_set.discard(uid)
-        users = get_all_users()
-        sent = 0
-        for u in users:
-            try: bot.send_photo(u['user_id'], message.photo[-1].file_id, caption="📢 Рассылка Ohoster"); sent += 1
-            except: pass; time.sleep(0.03)
-        bot.send_message(uid, f"✅ Отправлено: {sent}/{len(users)}")
-        return
 
 # ========== CALLBACKS ==========
 @bot.callback_query_handler(func=lambda call: True)
