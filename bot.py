@@ -1,4 +1,4 @@
-# bot.py - Хостинг бот (СТАБИЛЬНАЯ ВЕРСИЯ 24/7)
+# bot.py - Хостинг бот (ИСПРАВЛЕННАЯ ЗАГРУЗКА)
 import telebot
 from telebot import types
 import sqlite3
@@ -9,6 +9,7 @@ import zipfile
 import subprocess
 import signal
 import time
+import requests
 from datetime import datetime
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -74,16 +75,14 @@ def run_script(path):
     for f in py_files:
         if f.name == 'main.py': main = f; break
     try:
-        proc = subprocess.Popen(['python3', str(main)], cwd=str(path), 
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen([os.sys.executable, str(main)], cwd=str(path), 
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               start_new_session=True)
+        print(f"[PID:{proc.pid}] Started: {main}")
         return proc.pid
-    except:
-        try:
-            proc = subprocess.Popen(['python', str(main)], cwd=str(path),
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            return proc.pid
-        except:
-            return None
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
 
 def kill_process(pid):
     try: os.kill(int(pid), signal.SIGTERM); return True
@@ -127,42 +126,59 @@ def upload(message):
 @bot.message_handler(content_types=['document'])
 def handle_doc(message):
     uid = message.from_user.id
-    if uid not in waiting: return
+    if uid not in waiting: 
+        return
     
     doc = message.document
     fn = doc.file_name
     fs = doc.file_size
     
+    print(f"[UPLOAD] User: {uid}, File: {fn}, Size: {fs}")
+    
     if not fn.endswith(('.py', '.zip')):
         waiting.discard(uid)
-        return bot.send_message(uid, "❌ .py или .zip!")
+        return bot.send_message(uid, "❌ Только .py или .zip!")
     
     if fs > FREE_SIZE_MB * 1024 * 1024:
         waiting.discard(uid)
         return bot.send_message(uid, f"❌ Макс {FREE_SIZE_MB}МБ!")
     
-    # Скачиваем
-    msg = bot.send_message(uid, "📥 Загрузка...")
-    fi = bot.get_file(doc.file_id)
-    dl = bot.download_file(fi.file_path)
-    
-    # Временная папка
-    tmp = TEMP_DIR / str(uid) / uuid.uuid4().hex[:8]
-    tmp.mkdir(parents=True, exist_ok=True)
-    (tmp / fn).write_bytes(dl)
-    
-    # Папка скрипта
-    sid = uuid.uuid4().hex[:8]
-    sdir = SCRIPTS_DIR / str(uid) / sid
-    sdir.mkdir(parents=True, exist_ok=True)
+    # Отправляем статус
+    msg = bot.send_message(uid, "📥 Скачивание файла...")
     
     try:
+        # Получаем информацию о файле
+        file_info = bot.get_file(doc.file_id)
+        print(f"[DOWNLOAD] File path: {file_info.file_path}")
+        
+        # Скачиваем через requests (надежнее)
+        file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+        response = requests.get(file_url)
+        downloaded = response.content
+        
+        print(f"[DOWNLOADED] Size: {len(downloaded)} bytes")
+        
+        # Временная папка
+        tmp = TEMP_DIR / str(uid) / uuid.uuid4().hex[:8]
+        tmp.mkdir(parents=True, exist_ok=True)
+        (tmp / fn).write_bytes(downloaded)
+        
+        # Папка скрипта
+        sid = uuid.uuid4().hex[:8]
+        sdir = SCRIPTS_DIR / str(uid) / sid
+        sdir.mkdir(parents=True, exist_ok=True)
+        
+        bot.edit_message_text("📦 Распаковка...", uid, msg.message_id)
+        
         if fn.endswith('.zip'):
-            with zipfile.ZipFile(tmp/fn) as z: z.extractall(sdir)
+            with zipfile.ZipFile(tmp/fn) as z: 
+                z.extractall(sdir)
             ts = sum(f.stat().st_size for f in sdir.rglob('*') if f.is_file())
         else:
             shutil.copy2(str(tmp/fn), str(sdir/fn))
             ts = fs
+        
+        bot.edit_message_text("⚡ Запуск скрипта...", uid, msg.message_id)
         
         pid = run_script(str(sdir))
         
@@ -171,15 +187,30 @@ def handle_doc(message):
             kb = types.InlineKeyboardMarkup()
             kb.add(types.InlineKeyboardButton("⏹ Стоп", callback_data=f"stop:{sid}"),
                    types.InlineKeyboardButton("🗑 Удалить", callback_data=f"del:{sid}"))
-            bot.edit_message_text(f"✅ Запущен!\n📄 {fn}\n🆔 {sid}\nPID: {pid}", uid, msg.message_id, reply_markup=kb)
+            bot.edit_message_text(
+                f"✅ <b>ЗАПУЩЕН!</b>\n"
+                f"📄 {fn}\n"
+                f"🆔 <code>{sid}</code>\n"
+                f"📦 {ts/1024/1024:.1f} МБ\n"
+                f"🔢 PID: <code>{pid}</code>",
+                uid, msg.message_id, 
+                reply_markup=kb, parse_mode='HTML'
+            )
+            print(f"[SUCCESS] Script {sid} started with PID {pid}")
         else:
-            bot.edit_message_text("❌ Ошибка запуска!", uid, msg.message_id)
+            bot.edit_message_text("❌ Ошибка запуска! Проверьте файл.", uid, msg.message_id)
             shutil.rmtree(sdir, ignore_errors=True)
+            print(f"[ERROR] Failed to start script {sid}")
+    
     except Exception as e:
-        bot.edit_message_text(f"❌ {e}", uid, msg.message_id)
-        shutil.rmtree(sdir, ignore_errors=True)
+        print(f"[ERROR] Upload error: {e}")
+        bot.edit_message_text(f"❌ Ошибка: {str(e)[:100]}", uid, msg.message_id)
+        if 'sdir' in locals():
+            shutil.rmtree(sdir, ignore_errors=True)
+    
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        if 'tmp' in locals():
+            shutil.rmtree(tmp, ignore_errors=True)
         waiting.discard(uid)
 
 @bot.message_handler(func=lambda m: m.text == '💻 Хосты')
@@ -190,22 +221,25 @@ def hosts(message):
     if not scripts:
         return bot.send_message(uid, "😔 Нет хостов")
     
-    text = "💻 Хосты:\n\n"
+    text = "💻 <b>ХОСТЫ:</b>\n\n"
     kb = types.InlineKeyboardMarkup()
     
     for s in scripts:
         st = "🟢" if s['status']=='running' else "🔴"
         sz = (s['size'] or 0) / 1024 / 1024
-        text += f"{st} {s['name']} | {sz:.1f}МБ | {s['id']}\n"
-        kb.add(types.InlineKeyboardButton("⏹" if s['status']=='running' else "▶️", callback_data=f"stop:{s['id']}"),
-               types.InlineKeyboardButton("🗑", callback_data=f"del:{s['id']}"))
+        text += f"{st} <b>{s['name']}</b>\n   └ {sz:.1f}МБ | <code>{s['id']}</code>\n"
+        kb.add(
+            types.InlineKeyboardButton("⏹ Стоп" if s['status']=='running' else "▶️ Старт", callback_data=f"stop:{s['id']}"),
+            types.InlineKeyboardButton("🗑 Удалить", callback_data=f"del:{s['id']}")
+        )
     
-    bot.send_message(uid, text, reply_markup=kb)
+    bot.send_message(uid, text, reply_markup=kb, parse_mode='HTML')
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
     uid = call.from_user.id
     data = call.data
+    
     bot.answer_callback_query(call.id)
     
     if data.startswith("stop:"):
@@ -215,9 +249,12 @@ def callback(call):
             if s['id'] == sid:
                 if s['status'] == 'running':
                     update_status(sid, 'stopped')
+                    print(f"[STOP] Script {sid} stopped")
                 else:
                     pid = run_script(s['path'])
-                    if pid: update_status(sid, 'running')
+                    if pid: 
+                        update_status(sid, 'running')
+                        print(f"[START] Script {sid} started with PID {pid}")
                 break
         hosts(call.message)
     
@@ -228,25 +265,23 @@ def callback(call):
             if s['id'] == sid:
                 delete_script(sid)
                 shutil.rmtree(s['path'], ignore_errors=True)
+                print(f"[DELETE] Script {sid} deleted")
                 break
         hosts(call.message)
 
 # ========== ЗАПУСК ==========
 if __name__ == '__main__':
     init_db()
-    
-    # Веб-сервер в потоке
     threading.Thread(target=start_web, daemon=True).start()
     
     print(f"🚀 Бот запущен | Порт: {PORT}")
     print(f"🤖 Токен: {TOKEN[:15]}...")
     
-    # Запуск с автоперезапуском
     while True:
         try:
             bot.infinity_polling(timeout=60, long_polling_timeout=30)
         except Exception as e:
-            print(f"Ошибка: {e}")
+            print(f"Polling error: {e}")
             time.sleep(10)
             bot.remove_webhook()
-            time.sleep(5)
+            time.sleep(5),
