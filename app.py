@@ -1,6 +1,6 @@
 # ============================================================
-#  Ohoster Render — STABLE PRODUCTION
-#  Версия с разделением процессов (Flask + Bot отдельно)
+#  Ohoster Render — STABLE ULTIMATE (FULL CODE)
+#  Админка + Рабочие кнопки + Авто-восстановление
 # ============================================================
 
 import os
@@ -56,10 +56,10 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout)
     ]
 )
-logger = logging.getLogger("OhosterStable")
+logger = logging.getLogger("OhosterStableUltimate")
 
 # ==========================================================
-#  3. БАЗА ДАННЫХ (SQLite)
+#  3. БАЗА ДАННЫХ
 # ==========================================================
 def get_db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -94,7 +94,7 @@ def init_db():
 init_db()
 
 # ==========================================================
-#  4. ЗАПУСК СКРИПТОВ (Без asyncio, только subprocess)
+#  4. ЗАПУСК СКРИПТОВ
 # ==========================================================
 def run_script(path):
     """Запускает Python-скрипт в отдельном процессе."""
@@ -122,7 +122,7 @@ def run_script(path):
         return None
 
 def monitor_loop():
-    """Мониторинг в отдельном потоке."""
+    """Автоматический перезапуск упавших процессов."""
     while True:
         try:
             conn = get_db()
@@ -147,22 +147,25 @@ def monitor_loop():
 threading.Thread(target=monitor_loop, daemon=True).start()
 
 # ==========================================================
-#  5. FLASK (Только для пингов UptimeRobot)
+#  5. FLASK (Сервер для UptimeRobot)
 # ==========================================================
 app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return "<h1>Ohoster Render Stable</h1><p>Uptime: OK</p>"
+    return "<h1>Ohoster Render Ultimate</h1><p>Uptime: OK</p>"
 
 # ==========================================================
-#  6. PYROGRAM (Запускается в отдельном потоке)
+#  6. PYROGRAM (Телеграм-бот)
 # ==========================================================
-bot = Client("ohoster_stable", bot_token=TOKEN, parse_mode=ParseMode.HTML)
+bot = Client("ohoster_stable_ult", bot_token=TOKEN, parse_mode=ParseMode.HTML)
 
 waiting = set()
 waiting_edit = {}
 
+# ==========================================================
+#  7. КЛАВИАТУРЫ
+# ==========================================================
 def user_kb():
     return ReplyKeyboardMarkup(
         [
@@ -172,8 +175,17 @@ def user_kb():
         resize_keyboard=True
     )
 
+def admin_kb():
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("👑 Админ-панель"), KeyboardButton("📊 Статистика")],
+            [KeyboardButton("📤 Загрузить"), KeyboardButton("💻 Мои хосты")]
+        ],
+        resize_keyboard=True
+    )
+
 # ==========================================================
-#  7. ОБРАБОТЧИКИ
+#  8. ОБРАБОТЧИКИ
 # ==========================================================
 @bot.on_message(filters.command("start"))
 async def start(client, message):
@@ -184,9 +196,14 @@ async def start(client, message):
     conn.close()
 
     if uid in ADMIN_IDS:
-        await message.reply("👑 Админ-панель скоро будет...", reply_markup=user_kb())
+        await message.reply(
+            "👑 <b>Добро пожаловать, Администратор!</b>\n\n"
+            "У вас есть доступ к админ-панели.\n"
+            "Нажмите <b>👑 Админ-панель</b> для управления пользователями.",
+            reply_markup=admin_kb()
+        )
     else:
-        await message.reply("༆ Добро пожаловать!", reply_markup=user_kb())
+        await message.reply("༆ <b>Добро пожаловать в Ohoster!</b>\n\nИспользуй кнопки ниже.", reply_markup=user_kb())
 
 @bot.on_message(filters.text == "📤 Загрузить")
 async def upload(client, message):
@@ -195,7 +212,7 @@ async def upload(client, message):
     count = conn.execute('SELECT COUNT(*) FROM scripts WHERE user_id=?', (uid,)).fetchone()[0]
     conn.close()
     if count >= FREE_SCRIPTS:
-        await message.reply(f"❌ Лимит {FREE_SCRIPTS}!")
+        await message.reply(f"❌ Лимит {FREE_SCRIPTS} скриптов!")
         return
     waiting.add(uid)
     await message.reply(f"📤 Отправьте .py или .zip (до {FREE_SIZE_MB}МБ)")
@@ -203,7 +220,8 @@ async def upload(client, message):
 @bot.on_message(filters.document)
 async def handle_doc(client, message):
     uid = message.from_user.id
-    if uid not in waiting: return
+    if uid not in waiting:
+        return
     if uid in waiting_edit:
         await handle_replace_file(client, message)
         return
@@ -253,7 +271,7 @@ async def handle_doc(client, message):
                  InlineKeyboardButton("✏️ Изменить", callback_data=f"edit_{sid}"),
                  InlineKeyboardButton("🗑 Удалить", callback_data=f"del_{sid}")]
             ])
-            await msg.edit_text(f"✅ Запущен!\n📄 {fn}\n🆔 {sid}\n🛡 PID: {pid}", reply_markup=kb)
+            await msg.edit_text(f"✅ <b>Запущен!</b>\n📄 {fn}\n🆔 {sid}\n🛡 PID: {pid}", reply_markup=kb)
         else:
             await msg.edit_text("❌ Ошибка запуска!")
             shutil.rmtree(target_dir, ignore_errors=True)
@@ -263,9 +281,6 @@ async def handle_doc(client, message):
         shutil.rmtree(tmp_dir, ignore_errors=True)
         waiting.discard(uid)
 
-# ==========================================================
-#  8. ОСТАЛЬНЫЕ ОБРАБОТЧИКИ (сокращённо для стабильности)
-# ==========================================================
 @bot.on_message(filters.text == "💻 Мои хосты")
 async def hosts(client, message):
     uid = message.from_user.id
@@ -273,14 +288,17 @@ async def hosts(client, message):
     rows = conn.execute('SELECT * FROM scripts WHERE user_id=? ORDER BY created_at DESC', (uid,)).fetchall()
     conn.close()
     if not rows:
-        await message.reply("😔 Нет сервисов")
+        await message.reply("😔 <b>Нет сервисов</b>")
         return
-    text = "💻 МОИ ХОСТЫ\n\n"
+
+    running = sum(1 for r in rows if r['status'] == 'running')
+    text = f"💻 <b>МОИ СЕРВИСЫ</b>\n\n🟢 {running} | 🔴 {len(rows) - running}\n\n"
+
     kb = InlineKeyboardMarkup()
     for i, r in enumerate(rows, 1):
         st = "🟢" if r['status'] == 'running' else "🔴"
         sz = (r['size'] or 0) / 1024 / 1024
-        text += f"{st} {r['name']} | {sz:.1f}МБ\n"
+        text += f"{st} <b>{r['name']}</b> | {sz:.1f}МБ\n"
         kb.inline_keyboard.append([
             InlineKeyboardButton(f"⏹ {i}" if r['status'] == 'running' else f"▶️ {i}", callback_data=f"stop_{r['id']}"),
             InlineKeyboardButton(f"✏️ {i}", callback_data=f"edit_{r['id']}"),
@@ -288,49 +306,168 @@ async def hosts(client, message):
         ])
     await message.reply(text, reply_markup=kb)
 
+@bot.on_message(filters.text == "👤 Профиль")
+async def profile(client, message):
+    uid = message.from_user.id
+    conn = get_db()
+    count = conn.execute('SELECT COUNT(*) FROM scripts WHERE user_id=?', (uid,)).fetchone()[0]
+    running = conn.execute('SELECT COUNT(*) FROM scripts WHERE user_id=? AND status="running"', (uid,)).fetchone()[0]
+    conn.close()
+    text = f"👤 <b>ПРОФИЛЬ</b>\n\n🆔 <code>{uid}</code>\n📦 {count}/{FREE_SCRIPTS}\n🟢 {running}"
+    await message.reply(text)
+
+@bot.on_message(filters.text == "🆘 Помощь")
+async def help_cmd(client, message):
+    text = (
+        f"🆘 <b>ПОМОЩЬ</b>\n\n"
+        f"📤 Загрузить - .py или .zip\n"
+        f"💻 Мои хосты - управление\n"
+        f"👤 Профиль - статистика\n\n"
+        f"📦 Лимит: {FREE_SCRIPTS} скриптов\n"
+        f"📊 Размер: до {FREE_SIZE_MB}МБ\n"
+        f"🛡 Режим: Auto-Heal + Стабильный"
+    )
+    await message.reply(text)
+
+# ==========================================================
+#  9. CALLBACKS (ИСПРАВЛЕННЫЕ)
+# ==========================================================
 @bot.on_callback_query()
 async def callback_query(client, call):
     uid = call.from_user.id
     data = call.data
     await call.answer()
 
+    # ==========================================================
+    #  ОБЫЧНЫЙ ПОЛЬЗОВАТЕЛЬ: СТОП / ЗАПУСК
+    # ==========================================================
     if data.startswith("stop_"):
         sid = data.split("_")[1]
         conn = get_db()
         row = conn.execute('SELECT * FROM scripts WHERE id=? AND user_id=?', (sid, uid)).fetchone()
         if row:
             if row['status'] == 'running':
-                try: os.kill(row['pid'], signal.SIGTERM)
-                except: pass
+                try: 
+                    os.kill(row['pid'], signal.SIGTERM)
+                except: 
+                    pass
                 conn.execute('UPDATE scripts SET status="stopped", pid=NULL WHERE id=?', (sid,))
             else:
                 new_pid = run_script(row['path'])
-                if new_pid: conn.execute('UPDATE scripts SET status="running", pid=? WHERE id=?', (new_pid, sid))
-                else: conn.execute('UPDATE scripts SET status="stopped", pid=NULL WHERE id=?', (sid,))
+                if new_pid: 
+                    conn.execute('UPDATE scripts SET status="running", pid=? WHERE id=?', (new_pid, sid))
+                else: 
+                    conn.execute('UPDATE scripts SET status="stopped", pid=NULL WHERE id=?', (sid,))
             conn.commit()
         conn.close()
         await hosts(client, call.message)
         return
 
+    # ==========================================================
+    #  ОБЫЧНЫЙ ПОЛЬЗОВАТЕЛЬ: УДАЛИТЬ
+    # ==========================================================
     if data.startswith("del_"):
         sid = data.split("_")[1]
         conn = get_db()
         row = conn.execute('SELECT * FROM scripts WHERE id=? AND user_id=?', (sid, uid)).fetchone()
         if row:
-            try: os.kill(row['pid'], signal.SIGTERM)
-            except: pass
+            try: 
+                os.kill(row['pid'], signal.SIGTERM)
+            except: 
+                pass
             conn.execute('DELETE FROM scripts WHERE id=?', (sid,))
             conn.commit()
             conn.close()
             shutil.rmtree(row['path'], ignore_errors=True)
-        else: conn.close()
+        else: 
+            conn.close()
         await hosts(client, call.message)
         return
 
+    # ==========================================================
+    #  ОБЫЧНЫЙ ПОЛЬЗОВАТЕЛЬ: ИЗМЕНИТЬ (Замена файла)
+    # ==========================================================
     if data.startswith("edit_"):
         sid = data.split("_")[1]
+        conn = get_db()
+        row = conn.execute('SELECT * FROM scripts WHERE id=? AND user_id=?', (sid, uid)).fetchone()
+        conn.close()
+        if not row:
+            await call.message.reply("❌ Скрипт не найден или не принадлежит вам!")
+            return
+
         waiting_edit[uid] = sid
         await call.message.reply("📤 Отправьте новый .py файл для замены.")
+        return
+
+    # ==========================================================
+    #  АДМИН: СТОП / ЗАПУСК (для любого пользователя)
+    # ==========================================================
+    if data.startswith("admin_stop_"):
+        sid = data.split("_")[2]
+        conn = get_db()
+        script = conn.execute('SELECT * FROM scripts WHERE id=?', (sid,)).fetchone()
+        if script:
+            if script['status'] == 'running':
+                try: 
+                    os.kill(script['pid'], signal.SIGTERM)
+                except: 
+                    pass
+                conn.execute('UPDATE scripts SET status="stopped", pid=NULL WHERE id=?', (sid,))
+            else:
+                new_pid = run_script(script['path'])
+                if new_pid: 
+                    conn.execute('UPDATE scripts SET status="running", pid=? WHERE id=?', (new_pid, sid))
+                else: 
+                    conn.execute('UPDATE scripts SET status="stopped", pid=NULL WHERE id=?', (sid,))
+            conn.commit()
+        conn.close()
+        await admin_callback(client, call)
+        return
+
+    # ==========================================================
+    #  АДМИН: УДАЛИТЬ (для любого пользователя)
+    # ==========================================================
+    if data.startswith("admin_del_"):
+        sid = data.split("_")[2]
+        conn = get_db()
+        script = conn.execute('SELECT * FROM scripts WHERE id=?', (sid,)).fetchone()
+        if script:
+            try: 
+                os.kill(script['pid'], signal.SIGTERM)
+            except: 
+                pass
+            conn.execute('DELETE FROM scripts WHERE id=?', (sid,))
+            conn.commit()
+            conn.close()
+            shutil.rmtree(script['path'], ignore_errors=True)
+        else: 
+            conn.close()
+        await admin_callback(client, call)
+        return
+
+    # ==========================================================
+    #  АДМИН: ИЗМЕНИТЬ (для любого пользователя)
+    # ==========================================================
+    if data.startswith("admin_edit_"):
+        sid = data.split("_")[2]
+        conn = get_db()
+        script = conn.execute('SELECT * FROM scripts WHERE id=?', (sid,)).fetchone()
+        conn.close()
+        if not script:
+            await call.message.reply("❌ Скрипт не найден!")
+            return
+
+        waiting_edit[uid] = sid
+        await call.message.reply(f"📤 <b>Админ:</b> Отправьте новый файл для замены скрипта <b>{script['name']}</b>")
+        return
+
+    # ==========================================================
+    #  АДМИН: НАЗАД К СПИСКУ ПОЛЬЗОВАТЕЛЕЙ
+    # ==========================================================
+    if data == "admin_back":
+        await admin_panel(bot, call.message)
+        return
 
 async def handle_replace_file(client, message):
     uid = message.from_user.id
@@ -364,7 +501,125 @@ async def handle_replace_file(client, message):
         waiting_edit.pop(uid, None)
 
 # ==========================================================
-#  9. ЗАПУСК
+#  10. АДМИН-ПАНЕЛЬ
+# ==========================================================
+@bot.on_message(filters.text == "👑 Админ-панель" & filters.user(ADMIN_IDS))
+async def admin_panel(client, message):
+    uid = message.from_user.id
+    conn = get_db()
+    users = conn.execute('SELECT * FROM users ORDER BY user_id DESC').fetchall()
+    conn.close()
+
+    if not users:
+        await message.reply("👥 <b>Нет зарегистрированных пользователей</b>")
+        return
+
+    text = f"👑 <b>ПАНЕЛЬ АДМИНИСТРАТОРА</b>\n\n"
+    text += f"👥 Всего пользователей: {len(users)}\n\n"
+
+    kb = InlineKeyboardMarkup()
+    for user in users[:20]:
+        conn = get_db()
+        cnt = conn.execute('SELECT COUNT(*) FROM scripts WHERE user_id=?', (user['user_id'],)).fetchone()[0]
+        conn.close()
+        username = user['username'] or f"ID{user['user_id']}"
+        text += f"🆔 <code>{user['user_id']}</code> | @{username} | 📦{cnt}\n"
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(f"📂 Скрипты @{username}", callback_data=f"admin_user_{user['user_id']}")
+        ])
+    
+    await message.reply(text, reply_markup=kb)
+
+@bot.on_callback_query()
+async def admin_callback(client, call):
+    uid = call.from_user.id
+    if uid not in ADMIN_IDS:
+        await call.answer("⛔ Только для администратора!")
+        return
+
+    data = call.data
+    await call.answer()
+
+    if data.startswith("admin_user_"):
+        target_uid = int(data.split("_")[2])
+        conn = get_db()
+        scripts = conn.execute('SELECT * FROM scripts WHERE user_id=? ORDER BY created_at DESC', (target_uid,)).fetchall()
+        user = conn.execute('SELECT * FROM users WHERE user_id=?', (target_uid,)).fetchone()
+        conn.close()
+
+        if not scripts:
+            await call.message.reply(f"📂 У пользователя @{user['username'] or target_uid} нет скриптов.")
+            return
+
+        username = user['username'] or f"ID{target_uid}"
+        text = f"📂 <b>СКРИПТЫ ПОЛЬЗОВАТЕЛЯ @{username}</b>\n\n"
+        kb = InlineKeyboardMarkup()
+        for i, s in enumerate(scripts, 1):
+            st = "🟢" if s['status'] == 'running' else "🔴"
+            sz = (s['size'] or 0) / 1024 / 1024
+            text += f"{st} <b>{s['name']}</b> | {sz:.1f}МБ\n"
+            kb.inline_keyboard.append([
+                InlineKeyboardButton(f"⏹ {i}" if s['status'] == 'running' else f"▶️ {i}", callback_data=f"admin_stop_{s['id']}"),
+                InlineKeyboardButton(f"✏️ {i}", callback_data=f"admin_edit_{s['id']}"),
+                InlineKeyboardButton(f"🗑 {i}", callback_data=f"admin_del_{s['id']}")
+            ])
+        
+        kb.inline_keyboard.append([InlineKeyboardButton("🔙 Назад к пользователям", callback_data="admin_back")])
+        await call.message.reply(text, reply_markup=kb)
+        return
+
+    if data.startswith("admin_stop_"):
+        sid = data.split("_")[2]
+        conn = get_db()
+        script = conn.execute('SELECT * FROM scripts WHERE id=?', (sid,)).fetchone()
+        if script:
+            if script['status'] == 'running':
+                try: os.kill(script['pid'], signal.SIGTERM)
+                except: pass
+                conn.execute('UPDATE scripts SET status="stopped", pid=NULL WHERE id=?', (sid,))
+            else:
+                new_pid = run_script(script['path'])
+                if new_pid: conn.execute('UPDATE scripts SET status="running", pid=? WHERE id=?', (new_pid, sid))
+                else: conn.execute('UPDATE scripts SET status="stopped", pid=NULL WHERE id=?', (sid,))
+            conn.commit()
+        conn.close()
+        await admin_callback(client, call)
+        return
+
+    if data.startswith("admin_del_"):
+        sid = data.split("_")[2]
+        conn = get_db()
+        script = conn.execute('SELECT * FROM scripts WHERE id=?', (sid,)).fetchone()
+        if script:
+            try: os.kill(script['pid'], signal.SIGTERM)
+            except: pass
+            conn.execute('DELETE FROM scripts WHERE id=?', (sid,))
+            conn.commit()
+            conn.close()
+            shutil.rmtree(script['path'], ignore_errors=True)
+        else: conn.close()
+        await admin_callback(client, call)
+        return
+
+    if data.startswith("admin_edit_"):
+        sid = data.split("_")[2]
+        conn = get_db()
+        script = conn.execute('SELECT * FROM scripts WHERE id=?', (sid,)).fetchone()
+        conn.close()
+        if not script:
+            await call.message.reply("❌ Скрипт не найден!")
+            return
+
+        waiting_edit[uid] = sid
+        await call.message.reply(f"📤 <b>Админ:</b> Отправьте новый файл для замены скрипта <b>{script['name']}</b>")
+        return
+
+    if data == "admin_back":
+        await admin_panel(bot, call.message)
+        return
+
+# ==========================================================
+#  11. ЗАПУСК
 # ==========================================================
 def run_flask():
     app.run(host='0.0.0.0', port=8000, debug=False, use_reloader=False)
@@ -373,7 +628,7 @@ def run_bot():
     bot.run()
 
 if __name__ == '__main__':
-    logger.info("🚀 Запуск Ohoster Stable...")
+    logger.info("🚀 Запуск Ohoster Stable Ultimate...")
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=run_bot, daemon=True).start()
     while True:
