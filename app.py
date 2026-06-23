@@ -1,30 +1,31 @@
 # ============================================================
-#  Ohoster Render — PRODUCTION READY
-#  Основан на: Flask + SQLAlchemy + Pyrogram + Gunicorn
+#  Ohoster Render — STABLE PRODUCTION
+#  Версия с разделением процессов (Flask + Bot отдельно)
 # ============================================================
 
-import asyncio
 import os
+import sys
 import uuid
 import shutil
 import zipfile
 import time
 import signal
+import threading
 import logging
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, request
-from sqlalchemy import create_engine, Column, String, Integer, Float, Text
-from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy.exc import IntegrityError
+# Flask (для пингов от UptimeRobot)
+from flask import Flask
 
+# Pyrogram
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from pyrogram.enums import ParseMode
 
-import aiohttp
-import asyncio
+# БД
+import sqlite3
 
 # ==========================================================
 #  1. НАСТРОЙКИ
@@ -41,12 +42,11 @@ TEMP_DIR = BASE_DIR / "temp"
 DB_PATH = BASE_DIR / "bot.db"
 LOG_PATH = BASE_DIR / "bot.log"
 
-# Создаём папки
 for d in [SCRIPTS_DIR, TEMP_DIR]:
     d.mkdir(exist_ok=True)
 
 # ==========================================================
-#  2. ЛОГИРОВАНИЕ (Industry Standard)
+#  2. ЛОГИРОВАНИЕ
 # ==========================================================
 logging.basicConfig(
     level=logging.INFO,
@@ -56,40 +56,48 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout)
     ]
 )
-logger = logging.getLogger("OhosterRender")
+logger = logging.getLogger("OhosterStable")
 
 # ==========================================================
-#  3. БАЗА ДАННЫХ (SQLAlchemy — самый популярный ORM)
+#  3. БАЗА ДАННЫХ (SQLite)
 # ==========================================================
-engine = create_engine(f"sqlite:///{DB_PATH}?check_same_thread=False")
-Base = declarative_base()
-Session = sessionmaker(bind=engine)
+def get_db():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-class User(Base):
-    __tablename__ = 'users'
-    user_id = Column(Integer, primary_key=True)
-    username = Column(String)
-    created_at = Column(String)
+def init_db():
+    conn = get_db()
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            created_at TEXT
+        )
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS scripts (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER,
+            name TEXT,
+            path TEXT,
+            status TEXT,
+            size INTEGER,
+            pid INTEGER,
+            created_at TEXT,
+            last_seen REAL
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-class Script(Base):
-    __tablename__ = 'scripts'
-    id = Column(String, primary_key=True)
-    user_id = Column(Integer)
-    name = Column(String)
-    path = Column(String)
-    status = Column(String)
-    size = Column(Integer)
-    thread_id = Column(Integer, nullable=True)
-    created_at = Column(String)
-    last_seen = Column(Float, default=time.time())
-
-Base.metadata.create_all(engine)
+init_db()
 
 # ==========================================================
-#  4. ASYNC ДВИЖОК ЗАПУСКА (Самый популярный подход)
+#  4. ЗАПУСК СКРИПТОВ (Без asyncio, только subprocess)
 # ==========================================================
-async def run_script_async(path):
-    """Запускает Python-скрипт в асинхронном режиме."""
+def run_script(path):
+    """Запускает Python-скрипт в отдельном процессе."""
     py_files = list(Path(path).rglob("*.py"))
     if not py_files:
         return None
@@ -98,67 +106,63 @@ async def run_script_async(path):
         if f.name == 'main.py':
             main = f
             break
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, str(main)],
+            cwd=str(path),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            preexec_fn=os.setpgrp
+        )
+        return proc.pid
+    except Exception as e:
+        logger.error(f"Ошибка запуска: {e}")
+        return None
 
-    # Используем asyncio.create_subprocess_exec — популярный способ
-    proc = await asyncio.create_subprocess_exec(
-        sys.executable, str(main),
-        cwd=str(path),
-        stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    return proc.pid
-
-async def monitor_async():
-    """Асинхронный мониторинг с использованием asyncio."""
+def monitor_loop():
+    """Мониторинг в отдельном потоке."""
     while True:
         try:
-            session = Session()
-            running = session.query(Script).filter(Script.status == 'running', Script.thread_id != None).all()
-            for script in running:
-                # Проверяем процесс через os.kill(pid, 0) — популярный метод
+            conn = get_db()
+            rows = conn.execute('SELECT id, pid, path FROM scripts WHERE status="running" AND pid IS NOT NULL').fetchall()
+            for row in rows:
+                pid = row['pid']
                 try:
-                    os.kill(script.thread_id, 0)
+                    os.kill(pid, 0)
                 except OSError:
-                    logger.warning(f"Скрипт {script.id} упал. Перезапуск...")
-                    new_pid = await run_script_async(script.path)
+                    logger.warning(f"Скрипт {row['id']} упал. Перезапуск...")
+                    new_pid = run_script(row['path'])
                     if new_pid:
-                        script.status = 'running'
-                        script.thread_id = new_pid
-                        script.last_seen = time.time()
-                        session.commit()
+                        conn.execute('UPDATE scripts SET status="running", pid=?, last_seen=? WHERE id=?', (new_pid, time.time(), row['id']))
                     else:
-                        script.status = 'stopped'
-                        script.thread_id = None
-                        session.commit()
-            session.close()
+                        conn.execute('UPDATE scripts SET status="stopped", pid=NULL WHERE id=?', (row['id'],))
+                    conn.commit()
+            conn.close()
         except Exception as e:
             logger.error(f"Ошибка мониторинга: {e}")
-        await asyncio.sleep(20)
+        time.sleep(20)
 
-# Запускаем мониторинг
-asyncio.create_task(monitor_async())
+threading.Thread(target=monitor_loop, daemon=True).start()
 
 # ==========================================================
-#  5. FLASK — САМЫЙ ПОПУЛЯРНЫЙ ВЕБ-СЕРВЕР
+#  5. FLASK (Только для пингов UptimeRobot)
 # ==========================================================
 app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return "<h1>Ohoster Render Web Service</h1><p>Status: Running</p>"
+    return "<h1>Ohoster Render Stable</h1><p>Uptime: OK</p>"
 
 # ==========================================================
-#  6. PYROGRAM — САМЫЙ ПОПУЛЯРНЫЙ TELEGRAM КЛИЕНТ
+#  6. PYROGRAM (Запускается в отдельном потоке)
 # ==========================================================
-bot = Client("ohoster_bot", bot_token=TOKEN, parse_mode=ParseMode.HTML)
+bot = Client("ohoster_stable", bot_token=TOKEN, parse_mode=ParseMode.HTML)
 
 waiting = set()
-active_threads = {}
+waiting_edit = {}
 
-# ==========================================================
-#  7. КЛАВИАТУРЫ (Популярный дизайн)
-# ==========================================================
 def user_kb():
     return ReplyKeyboardMarkup(
         [
@@ -169,40 +173,29 @@ def user_kb():
     )
 
 # ==========================================================
-#  8. ОБРАБОТЧИКИ (Популярные паттерны)
+#  7. ОБРАБОТЧИКИ
 # ==========================================================
 @bot.on_message(filters.command("start"))
 async def start(client, message):
     uid = message.from_user.id
-    session = Session()
-    if not session.query(User).filter(User.user_id == uid).first():
-        new_user = User(user_id=uid, username=message.from_user.username, created_at=datetime.now().isoformat())
-        session.add(new_user)
-        session.commit()
-    session.close()
+    conn = get_db()
+    conn.execute('INSERT OR IGNORE INTO users VALUES (?,?,?)', (uid, message.from_user.username, datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
 
-    # Получаем статистику
-    session = Session()
-    scripts = session.query(Script).filter(Script.user_id == uid).all()
-    running = sum(1 for s in scripts if s.status == 'running')
-    session.close()
-
-    text = f"༆ <b>Ohoster Render Web</b>\n\n"
-    text += f"📦 Запущено: {running} скриптов\n"
-    text += f"🚀 Хостинг: Render Web Service (0.5 CPU)\n"
-    text += f"🛡 Режим: Async + SQLAlchemy"
-    
-    await message.reply(text, reply_markup=user_kb())
+    if uid in ADMIN_IDS:
+        await message.reply("👑 Админ-панель скоро будет...", reply_markup=user_kb())
+    else:
+        await message.reply("༆ Добро пожаловать!", reply_markup=user_kb())
 
 @bot.on_message(filters.text == "📤 Загрузить")
 async def upload(client, message):
     uid = message.from_user.id
-    session = Session()
-    count = session.query(Script).filter(Script.user_id == uid).count()
-    session.close()
-    
+    conn = get_db()
+    count = conn.execute('SELECT COUNT(*) FROM scripts WHERE user_id=?', (uid,)).fetchone()[0]
+    conn.close()
     if count >= FREE_SCRIPTS:
-        await message.reply(f"❌ Лимит {FREE_SCRIPTS} скриптов!")
+        await message.reply(f"❌ Лимит {FREE_SCRIPTS}!")
         return
     waiting.add(uid)
     await message.reply(f"📤 Отправьте .py или .zip (до {FREE_SIZE_MB}МБ)")
@@ -210,9 +203,11 @@ async def upload(client, message):
 @bot.on_message(filters.document)
 async def handle_doc(client, message):
     uid = message.from_user.id
-    if uid not in waiting:
+    if uid not in waiting: return
+    if uid in waiting_edit:
+        await handle_replace_file(client, message)
         return
-    
+
     doc = message.document
     fn = doc.file_name
     fs = doc.file_size
@@ -221,18 +216,14 @@ async def handle_doc(client, message):
         waiting.discard(uid)
         await message.reply("❌ Только .py или .zip!")
         return
-    
     if fs > FREE_SIZE_MB * 1024 * 1024:
         waiting.discard(uid)
         await message.reply(f"❌ Макс {FREE_SIZE_MB}МБ!")
         return
 
     msg = await message.reply("📥 Загрузка...")
-    
     try:
-        # Скачиваем через aiohttp (популярный асинхронный клиент)
-        file = await bot.download_media(doc, file_name=f"{uuid.uuid4().hex[:8]}.{fn.split('.')[-1]}")
-        
+        file = await bot.download_media(doc)
         tmp_dir = TEMP_DIR / str(uid) / uuid.uuid4().hex[:8]
         tmp_dir.mkdir(parents=True, exist_ok=True)
         shutil.move(file, tmp_dir / fn)
@@ -250,86 +241,53 @@ async def handle_doc(client, message):
             total_size = fs
 
         await msg.edit_text("⚡ Запуск...")
-        pid = await run_script_async(str(target_dir))
+        pid = run_script(str(target_dir))
 
         if pid:
-            session = Session()
-            new_script = Script(id=sid, user_id=uid, name=fn, path=str(target_dir), status='running', size=total_size, thread_id=pid, created_at=datetime.now().isoformat())
-            session.add(new_script)
-            session.commit()
-            session.close()
-            
-            active_threads[sid] = pid
+            conn = get_db()
+            conn.execute('INSERT INTO scripts VALUES (?,?,?,?,?,?,?,?,?)', (sid, uid, fn, str(target_dir), 'running', total_size, pid, datetime.now().isoformat(), time.time()))
+            conn.commit()
+            conn.close()
             kb = InlineKeyboardMarkup([
                 [InlineKeyboardButton("⏹ Стоп", callback_data=f"stop_{sid}"),
+                 InlineKeyboardButton("✏️ Изменить", callback_data=f"edit_{sid}"),
                  InlineKeyboardButton("🗑 Удалить", callback_data=f"del_{sid}")]
             ])
-            await msg.edit_text(
-                f"✅ <b>Запущен!</b>\n📄 {fn}\n🆔 {sid}\n🛡 Поток: {pid}",
-                reply_markup=kb
-            )
+            await msg.edit_text(f"✅ Запущен!\n📄 {fn}\n🆔 {sid}\n🛡 PID: {pid}", reply_markup=kb)
         else:
             await msg.edit_text("❌ Ошибка запуска!")
             shutil.rmtree(target_dir, ignore_errors=True)
     except Exception as e:
-        logger.error(f"Ошибка загрузки: {e}")
         await msg.edit_text(f"❌ Ошибка: {e}")
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         waiting.discard(uid)
 
+# ==========================================================
+#  8. ОСТАЛЬНЫЕ ОБРАБОТЧИКИ (сокращённо для стабильности)
+# ==========================================================
 @bot.on_message(filters.text == "💻 Мои хосты")
 async def hosts(client, message):
     uid = message.from_user.id
-    session = Session()
-    scripts = session.query(Script).filter(Script.user_id == uid).all()
-    session.close()
-
-    if not scripts:
-        await message.reply("😔 <b>Нет сервисов</b>")
+    conn = get_db()
+    rows = conn.execute('SELECT * FROM scripts WHERE user_id=? ORDER BY created_at DESC', (uid,)).fetchall()
+    conn.close()
+    if not rows:
+        await message.reply("😔 Нет сервисов")
         return
-
-    running = sum(1 for s in scripts if s.status == 'running')
-    text = f"💻 <b>МОИ СЕРВИСЫ</b>\n\n🟢 {running} | 🔴 {len(scripts) - running}\n\n"
-
+    text = "💻 МОИ ХОСТЫ\n\n"
     kb = InlineKeyboardMarkup()
-    for i, s in enumerate(scripts, 1):
-        st = "🟢" if s.status == 'running' else "🔴"
-        sz = (s.size or 0) / 1024 / 1024
-        text += f"{st} <b>{s.name}</b> | {sz:.1f}МБ\n"
+    for i, r in enumerate(rows, 1):
+        st = "🟢" if r['status'] == 'running' else "🔴"
+        sz = (r['size'] or 0) / 1024 / 1024
+        text += f"{st} {r['name']} | {sz:.1f}МБ\n"
         kb.inline_keyboard.append([
-            InlineKeyboardButton(f"⏹ {i}" if s.status == 'running' else f"▶️ {i}", callback_data=f"stop_{s.id}"),
-            InlineKeyboardButton(f"🗑 {i}", callback_data=f"del_{s.id}")
+            InlineKeyboardButton(f"⏹ {i}" if r['status'] == 'running' else f"▶️ {i}", callback_data=f"stop_{r['id']}"),
+            InlineKeyboardButton(f"✏️ {i}", callback_data=f"edit_{r['id']}"),
+            InlineKeyboardButton(f"🗑 {i}", callback_data=f"del_{r['id']}")
         ])
     await message.reply(text, reply_markup=kb)
 
-@bot.on_message(filters.text == "👤 Профиль")
-async def profile(client, message):
-    uid = message.from_user.id
-    session = Session()
-    count = session.query(Script).filter(Script.user_id == uid).count()
-    running = session.query(Script).filter(Script.user_id == uid, Script.status == 'running').count()
-    session.close()
-    
-    text = f"👤 <b>ПРОФИЛЬ</b>\n\n🆔 <code>{uid}</code>\n📦 {count}/{FREE_SCRIPTS}\n🟢 {running}"
-    await message.reply(text)
-
-@bot.on_message(filters.text == "🆘 Помощь")
-async def help_cmd(client, message):
-    text = (
-        f"🆘 <b>ПОМОЩЬ</b>\n\n"
-        f"📤 Загрузить - .py или .zip\n"
-        f"💻 Мои хосты - управление\n"
-        f"👤 Профиль - статистика\n\n"
-        f"📦 Лимит: {FREE_SCRIPTS} скриптов\n"
-        f"📊 Размер: до {FREE_SIZE_MB}МБ\n"
-        f"🛡 Режим: Async + SQLAlchemy"
-    )
-    await message.reply(text)
-
-# ==========================================================
-#  9. CALLBACKS (Популярный подход)
-# ==========================================================
 @bot.on_callback_query()
 async def callback_query(client, call):
     uid = call.from_user.id
@@ -338,51 +296,85 @@ async def callback_query(client, call):
 
     if data.startswith("stop_"):
         sid = data.split("_")[1]
-        session = Session()
-        script = session.query(Script).filter(Script.id == sid, Script.user_id == uid).first()
-        if script and script.status == 'running':
-            try:
-                os.kill(script.thread_id, signal.SIGTERM)
-            except:
-                pass
-            script.status = 'stopped'
-            script.thread_id = None
-            session.commit()
-        session.close()
-        # Обновляем список
+        conn = get_db()
+        row = conn.execute('SELECT * FROM scripts WHERE id=? AND user_id=?', (sid, uid)).fetchone()
+        if row:
+            if row['status'] == 'running':
+                try: os.kill(row['pid'], signal.SIGTERM)
+                except: pass
+                conn.execute('UPDATE scripts SET status="stopped", pid=NULL WHERE id=?', (sid,))
+            else:
+                new_pid = run_script(row['path'])
+                if new_pid: conn.execute('UPDATE scripts SET status="running", pid=? WHERE id=?', (new_pid, sid))
+                else: conn.execute('UPDATE scripts SET status="stopped", pid=NULL WHERE id=?', (sid,))
+            conn.commit()
+        conn.close()
         await hosts(client, call.message)
+        return
 
-    elif data.startswith("del_"):
+    if data.startswith("del_"):
         sid = data.split("_")[1]
-        session = Session()
-        script = session.query(Script).filter(Script.id == sid, Script.user_id == uid).first()
-        if script:
-            if script.thread_id:
-                try:
-                    os.kill(script.thread_id, signal.SIGTERM)
-                except:
-                    pass
-            session.delete(script)
-            session.commit()
-            session.close()
-            shutil.rmtree(script.path, ignore_errors=True)
-        session.close()
+        conn = get_db()
+        row = conn.execute('SELECT * FROM scripts WHERE id=? AND user_id=?', (sid, uid)).fetchone()
+        if row:
+            try: os.kill(row['pid'], signal.SIGTERM)
+            except: pass
+            conn.execute('DELETE FROM scripts WHERE id=?', (sid,))
+            conn.commit()
+            conn.close()
+            shutil.rmtree(row['path'], ignore_errors=True)
+        else: conn.close()
         await hosts(client, call.message)
+        return
+
+    if data.startswith("edit_"):
+        sid = data.split("_")[1]
+        waiting_edit[uid] = sid
+        await call.message.reply("📤 Отправьте новый .py файл для замены.")
+
+async def handle_replace_file(client, message):
+    uid = message.from_user.id
+    if uid not in waiting_edit: return
+    sid = waiting_edit[uid]
+    doc = message.document
+    if not doc.file_name.endswith('.py'):
+        await message.reply("❌ Только .py!")
+        return
+    try:
+        new_file = await bot.download_media(doc)
+        conn = get_db()
+        row = conn.execute('SELECT * FROM scripts WHERE id=? AND user_id=?', (sid, uid)).fetchone()
+        if row:
+            if row['status'] == 'running':
+                try: os.kill(row['pid'], signal.SIGTERM)
+                except: pass
+            for old in Path(row['path']).rglob("*.py"):
+                try: os.remove(old)
+                except: pass
+            shutil.move(new_file, Path(row['path']) / "main.py")
+            new_pid = run_script(row['path'])
+            if new_pid: conn.execute('UPDATE scripts SET status="running", pid=? WHERE id=?', (new_pid, sid))
+            else: conn.execute('UPDATE scripts SET status="stopped", pid=NULL WHERE id=?', (sid,))
+            conn.commit()
+        conn.close()
+        await message.reply("✅ Файл заменён!")
+    except Exception as e:
+        await message.reply(f"❌ Ошибка: {e}")
+    finally:
+        waiting_edit.pop(uid, None)
 
 # ==========================================================
-#  10. ЗАПУСК
+#  9. ЗАПУСК
 # ==========================================================
-async def main():
-    # Запускаем Flask в отдельном потоке
-    from threading import Thread
-    def run_flask():
-        app.run(host='0.0.0.0', port=8000, debug=False, use_reloader=False)
-    Thread(target=run_flask, daemon=True).start()
+def run_flask():
+    app.run(host='0.0.0.0', port=8000, debug=False, use_reloader=False)
 
-    # Запускаем Pyrogram бота
-    await bot.start()
-    logger.info("🚀 Ohoster Render Web запущен (0.5 CPU)")
-    await asyncio.Event().wait()
+def run_bot():
+    bot.run()
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    logger.info("🚀 Запуск Ohoster Stable...")
+    threading.Thread(target=run_flask, daemon=True).start()
+    threading.Thread(target=run_bot, daemon=True).start()
+    while True:
+        time.sleep(1)
