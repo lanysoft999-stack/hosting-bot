@@ -1,36 +1,16 @@
-# ============================================================
-#  Ohoster Hosting Bot — ФИНАЛЬНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ
-#  Исправлены ошибки 409 и SQLite
-# ============================================================
-
+# bot.py - Ohoster Hosting Bot (ПОЛНЫЙ КОД)
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
-import sqlite3
-import os
-import sys
-import uuid
-import shutil
-import zipfile
-import subprocess
-import signal
-import time
-import requests
-import threading
+import sqlite3, os, sys, uuid, shutil, zipfile, subprocess, signal, time, requests, threading
 from datetime import datetime
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# ==========================================================
-#  1. НАСТРОЙКИ
-# ==========================================================
-TOKEN = os.environ.get('BOT_TOKEN', '')
-if not TOKEN:
-    print("❌ ОШИБКА: Токен не найден! Добавьте BOT_TOKEN в Environment Variables")
-    sys.exit(1)
-
+# ========== НАСТРОЙКИ ==========
+TOKEN = "1456462948:AAEoNXLuUJF3OwjdF9b1t7aREerbgybFH0o"
 ADMIN_IDS = [314148464]
-
+PORT = int(os.environ.get('PORT', 10000))
 FREE_SCRIPTS = 5
 FREE_SIZE_MB = 10
 
@@ -42,33 +22,11 @@ DB_PATH = BASE_DIR / "bot.db"
 for d in [SCRIPTS_DIR, TEMP_DIR]:
     d.mkdir(exist_ok=True)
 
-# ==========================================================
-#  2. БАЗА ДАННЫХ (SQLite)
-# ==========================================================
+# ========== БД ==========
 def init_db():
     conn = sqlite3.connect(str(DB_PATH))
-    
-    # Создаём таблицу users с правильным количеством колонок (3 колонки)
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            created_at TEXT
-        )
-    ''')
-    
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS scripts (
-            id TEXT PRIMARY KEY,
-            user_id INTEGER,
-            name TEXT,
-            path TEXT,
-            status TEXT,
-            size INTEGER,
-            pid INTEGER,
-            created_at TEXT
-        )
-    ''')
+    conn.execute('CREATE TABLE IF NOT EXISTS scripts (id TEXT, user_id INTEGER, name TEXT, path TEXT, status TEXT, size INTEGER)')
+    conn.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT)')
     conn.commit()
     conn.close()
 
@@ -79,120 +37,99 @@ def get_scripts(uid):
     conn.close()
     return [dict(r) for r in rows]
 
+def get_all_scripts():
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute('SELECT * FROM scripts ORDER BY rowid DESC').fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
 def count_scripts(uid):
     conn = sqlite3.connect(str(DB_PATH))
     cnt = conn.execute('SELECT COUNT(*) FROM scripts WHERE user_id=?', (uid,)).fetchone()[0]
     conn.close()
     return cnt
 
-def add_script(sid, uid, name, path, size, pid):
+def get_all_users():
     conn = sqlite3.connect(str(DB_PATH))
-    conn.execute('INSERT INTO scripts VALUES (?,?,?,?,?,?,?,?)', (sid, uid, name, path, 'running', size, pid, datetime.now().isoformat()))
-    conn.commit()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute('SELECT * FROM users').fetchall()
     conn.close()
+    return [dict(r) for r in rows]
 
-def update_script_status(sid, status, pid=None):
-    conn = sqlite3.connect(str(DB_PATH))
-    if pid is None:
-        conn.execute('UPDATE scripts SET status=?, pid=NULL WHERE id=?', (status, sid))
-    else:
-        conn.execute('UPDATE scripts SET status=?, pid=? WHERE id=?', (status, pid, sid))
-    conn.commit()
-    conn.close()
-
-def delete_script(sid):
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.execute('DELETE FROM scripts WHERE id=?', (sid,))
-    conn.commit()
-    conn.close()
-
-# Запускаем инициализацию БД
-init_db()
-
-# ==========================================================
-#  3. ВЕБ-СЕРВЕР ДЛЯ RENDER (ОБЯЗАТЕЛЬНО!)
-# ==========================================================
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b'OK')
-    def log_message(self, *args):
-        pass
-
-def start_web():
-    port = int(os.environ.get('PORT', 10000))
-    HTTPServer(('0.0.0.0', port), HealthHandler).serve_forever()
-
-threading.Thread(target=start_web, daemon=True).start()
-
-# ==========================================================
-#  4. ЗАПУСК СКРИПТОВ
-# ==========================================================
+# ========== ЗАПУСК СКРИПТА ==========
 def run_script(path):
     py_files = list(Path(path).rglob("*.py"))
-    if not py_files:
-        return None
+    if not py_files: return None
     main = py_files[0]
     for f in py_files:
-        if f.name == 'main.py':
-            main = f
-            break
+        if f.name == 'main.py': main = f; break
     try:
-        proc = subprocess.Popen(
-            [sys.executable, str(main)],
-            cwd=str(path),
-            start_new_session=True,
-            preexec_fn=os.setpgrp
-        )
+        proc = subprocess.Popen([sys.executable, str(main)], cwd=str(path),
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         return proc.pid
-    except Exception as e:
-        print(f"Error: {e}")
-        return None
+    except: return None
 
-# ==========================================================
-#  5. TELEGRAM БОТ
-# ==========================================================
+# ========== ВЕБ-СЕРВЕР ==========
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200); self.end_headers(); self.wfile.write(b'OK')
+    def log_message(self, *args): pass
+
+def start_web():
+    HTTPServer(('0.0.0.0', PORT), Handler).serve_forever()
+
+# ========== БОТ ==========
 bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
+bot.remove_webhook()
+time.sleep(3)
+
 waiting = set()
 
-# ПРИНУДИТЕЛЬНАЯ ОЧИСТКА ВЕБХУКА (чтобы убрать ошибку 409)
-try:
-    bot.remove_webhook()
-    print("✅ Старые вебхуки очищены.")
-except Exception as e:
-    print(f"⚠️ Ошибка при очистке вебхуков: {e}")
-
-# ==========================================================
-#  6. КЛАВИАТУРЫ
-# ==========================================================
 def user_kb():
     kb = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     kb.add("📤 Загрузить", "💻 Мои хосты")
     kb.add("👤 Профиль", "🆘 Помощь")
     return kb
 
-# ==========================================================
-#  7. ОБРАБОТЧИКИ
-# ==========================================================
+def admin_kb():
+    kb = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    kb.add("📊 Статистика", "👥 Пользователи")
+    kb.add("📤 Загрузить", "💻 Мои хосты")
+    return kb
+
+# ========== СТАРТ ==========
 @bot.message_handler(commands=['start'])
 def start(message):
     uid = message.from_user.id
-    username = message.from_user.username or "NoUsername"
-    now = datetime.now().isoformat()
     
     conn = sqlite3.connect(str(DB_PATH))
-    # ИСПРАВЛЕНА ОШИБКА: вставляем 3 значения, а не 2 (добавлен now)
-    conn.execute('INSERT OR IGNORE INTO users VALUES (?,?,?)', (uid, username, now))
+    conn.execute('INSERT OR IGNORE INTO users VALUES (?,?)', (uid, message.from_user.username))
     conn.commit()
     conn.close()
-
-    scripts = get_scripts(uid)
-    running = sum(1 for s in scripts if s['status'] == 'running')
     
-    text = f"༆ <b>Ohoster Render Bot</b>\n\n📦 Запущено: {running} скриптов\n🚀 Хостинг: Render"
+    if uid in ADMIN_IDS:
+        scripts = get_all_scripts()
+        running = sum(1 for s in scripts if s['status']=='running')
+        users = get_all_users()
+        text = f"👑 <b>АДМИН Ohoster</b>\n\n👥 {len(users)} | 📦 {len(scripts)} | 🟢 {running}"
+        bot.send_message(uid, text, reply_markup=admin_kb())
+        return
+    
+    scripts = get_scripts(uid)
+    running = sum(1 for s in scripts if s['status']=='running')
+    stopped = len(scripts) - running
+    uptime = 100 if len(scripts) == 0 else round((running/len(scripts))*100)
+    
+    text = (
+        f"༆ <b>Добро пожаловать в Ohoster!</b>\n\n"
+        f"⚠︎ Аптайм за 24 часа: {uptime}%\n"
+        f"➪ Упало сервисов: {stopped}\n"
+        f"➪ Сервисов запущено: {running}"
+    )
     bot.send_message(uid, text, reply_markup=user_kb())
 
+# ========== ЗАГРУЗКА ==========
 @bot.message_handler(func=lambda m: m.text == '📤 Загрузить')
 def upload(message):
     uid = message.from_user.id
@@ -205,147 +142,188 @@ def upload(message):
 def handle_doc(message):
     uid = message.from_user.id
     if uid not in waiting: return
+    
     doc = message.document
     fn = doc.file_name
     fs = doc.file_size
-
+    
     if not fn.endswith(('.py', '.zip')):
         waiting.discard(uid)
-        return bot.send_message(uid, "❌ Только .py или .zip!")
+        return bot.send_message(uid, "❌ .py или .zip!")
+    
     if fs > FREE_SIZE_MB * 1024 * 1024:
         waiting.discard(uid)
         return bot.send_message(uid, f"❌ Макс {FREE_SIZE_MB}МБ!")
-
+    
     msg = bot.send_message(uid, "📥 Загрузка...")
+    
     try:
-        file_info = bot.get_file(doc.file_id)
-        url = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
-        content = requests.get(url, timeout=30).content
-
-        tmp_dir = TEMP_DIR / str(uid) / uuid.uuid4().hex[:8]
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-        (tmp_dir / fn).write_bytes(content)
-
+        # Скачиваем файл
+        fi = bot.get_file(doc.file_id)
+        url = f"https://api.telegram.org/file/bot{TOKEN}/{fi.file_path}"
+        dl = requests.get(url).content
+        
+        # Временная папка
+        tmp = TEMP_DIR / str(uid) / uuid.uuid4().hex[:8]
+        tmp.mkdir(parents=True, exist_ok=True)
+        (tmp / fn).write_bytes(dl)
+        
+        # Папка для скрипта
         sid = uuid.uuid4().hex[:8]
-        target_dir = SCRIPTS_DIR / str(uid) / sid
-        target_dir.mkdir(parents=True, exist_ok=True)
-
+        sdir = SCRIPTS_DIR / str(uid) / sid
+        sdir.mkdir(parents=True, exist_ok=True)
+        
+        # Распаковка или копирование
         if fn.endswith('.zip'):
-            with zipfile.ZipFile(tmp_dir / fn) as z:
-                z.extractall(target_dir)
-            total_size = sum(f.stat().st_size for f in target_dir.rglob('*') if f.is_file())
+            with zipfile.ZipFile(tmp/fn) as z:
+                z.extractall(sdir)
+            ts = sum(f.stat().st_size for f in sdir.rglob('*') if f.is_file())
         else:
-            shutil.copy2(str(tmp_dir / fn), str(target_dir / fn))
-            total_size = fs
-
+            shutil.copy2(str(tmp/fn), str(sdir/fn))
+            ts = fs
+        
+        # Запускаем
         bot.edit_message_text("⚡ Запуск...", uid, msg.message_id)
-        pid = run_script(str(target_dir))
-
+        pid = run_script(str(sdir))
+        
         if pid:
-            add_script(sid, uid, fn, str(target_dir), total_size, pid)
+            conn = sqlite3.connect(str(DB_PATH))
+            conn.execute('INSERT INTO scripts VALUES (?,?,?,?,?,?)', (sid, uid, fn, str(sdir), 'running', ts))
+            conn.commit()
+            conn.close()
+            
             kb = InlineKeyboardMarkup()
             kb.add(
                 InlineKeyboardButton("⏹ Стоп", callback_data=f"stop:{sid}"),
                 InlineKeyboardButton("🗑 Удалить", callback_data=f"del:{sid}")
             )
-            bot.edit_message_text(f"✅ <b>Запущен!</b>\n📄 {fn}\n🆔 {sid}\nPID: {pid}", uid, msg.message_id, reply_markup=kb)
+            bot.edit_message_text(
+                f"✅ <b>Запущен!</b>\n📄 {fn}\n🆔 {sid}\nPID: {pid}",
+                uid, msg.message_id, reply_markup=kb
+            )
         else:
             bot.edit_message_text("❌ Ошибка запуска!", uid, msg.message_id)
-            shutil.rmtree(target_dir, ignore_errors=True)
+            shutil.rmtree(sdir, ignore_errors=True)
+            
     except Exception as e:
         bot.edit_message_text(f"❌ Ошибка: {e}", uid, msg.message_id)
     finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+        shutil.rmtree(tmp, ignore_errors=True)
         waiting.discard(uid)
 
+# ========== ХОСТЫ ==========
 @bot.message_handler(func=lambda m: m.text == '💻 Мои хосты')
 def hosts(message):
     uid = message.from_user.id
     scripts = get_scripts(uid)
+    
     if not scripts:
-        return bot.send_message(uid, "😔 <b>Нет сервисов</b>")
-    running = sum(1 for s in scripts if s['status'] == 'running')
-    text = f"💻 <b>МОИ СЕРВИСЫ</b>\n\n🟢 {running} | 🔴 {len(scripts) - running}\n\n"
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton("📤 Загрузить скрипт", callback_data="upload_btn"))
+        return bot.send_message(uid, "😔 <b>Нет сервисов</b>", reply_markup=kb)
+    
+    running = sum(1 for s in scripts if s['status']=='running')
+    text = f"💻 <b>МОИ СЕРВИСЫ</b>\n\n🟢 {running} | 🔴 {len(scripts)-running}\n\n"
+    
     kb = InlineKeyboardMarkup()
     for i, s in enumerate(scripts, 1):
-        st = "🟢" if s['status'] == 'running' else "🔴"
+        st = "🟢" if s['status']=='running' else "🔴"
         sz = (s['size'] or 0) / 1024 / 1024
-        text += f"{st} <b>{s['name']}</b> | {sz:.1f}МБ\n"
+        text += f"{st} <b>{s['name']}</b> | {sz:.1f}МБ | <code>{s['id']}</code>\n"
         kb.add(
-            InlineKeyboardButton(f"⏹ {i}" if s['status'] == 'running' else f"▶️ {i}", callback_data=f"stop:{s['id']}"),
+            InlineKeyboardButton(f"⏹ {i}" if s['status']=='running' else f"▶️ {i}", callback_data=f"stop:{s['id']}"),
             InlineKeyboardButton(f"🗑 {i}", callback_data=f"del:{s['id']}")
         )
+    
+    kb.add(InlineKeyboardButton("📤 Загрузить ещё", callback_data="upload_btn"))
     bot.send_message(uid, text, reply_markup=kb)
 
+# ========== ПРОФИЛЬ ==========
 @bot.message_handler(func=lambda m: m.text == '👤 Профиль')
 def profile(message):
     uid = message.from_user.id
     scripts = get_scripts(uid)
-    running = sum(1 for s in scripts if s['status'] == 'running')
-    text = f"👤 <b>ПРОФИЛЬ</b>\n\n🆔 <code>{uid}</code>\n📦 {len(scripts)}/{FREE_SCRIPTS}\n🟢 {running}"
+    running = sum(1 for s in scripts if s['status']=='running')
+    text = f"👤 <b>ПРОФИЛЬ</b>\n\n🆔 <code>{uid}</code>\n📦 Хостов: {len(scripts)}/{FREE_SCRIPTS}\n🟢 Запущено: {running}"
     bot.send_message(uid, text)
 
+# ========== ПОМОЩЬ ==========
 @bot.message_handler(func=lambda m: m.text == '🆘 Помощь')
 def help_cmd(message):
-    text = f"🆘 <b>ПОМОЩЬ</b>\n\n📤 Загрузить - .py или .zip\n💻 Мои хосты - управление\n\n📦 Лимит: {FREE_SCRIPTS} скриптов\n📊 Размер: до {FREE_SIZE_MB}МБ"
+    text = f"🆘 <b>ПОМОЩЬ</b>\n\n📤 Загрузить - .py или .zip\n💻 Мои хосты - управление\n👤 Профиль - статистика\n\n📦 Лимит: {FREE_SCRIPTS} скриптов\n📊 Размер: до {FREE_SIZE_MB}МБ"
     bot.send_message(message.chat.id, text)
 
+# ========== АДМИН ==========
+@bot.message_handler(func=lambda m: m.text == '📊 Статистика' and m.from_user.id in ADMIN_IDS)
+def stats(message):
+    users = get_all_users()
+    scripts = get_all_scripts()
+    running = sum(1 for s in scripts if s['status']=='running')
+    text = f"📊 <b>СТАТИСТИКА</b>\n\n👥 {len(users)}\n📦 {len(scripts)} (🟢{running})"
+    bot.send_message(message.chat.id, text)
+
+@bot.message_handler(func=lambda m: m.text == '👥 Пользователи' and m.from_user.id in ADMIN_IDS)
+def admin_users(message):
+    users = get_all_users()
+    if not users:
+        return bot.send_message(message.chat.id, "Нет пользователей")
+    text = f"👥 <b>ПОЛЬЗОВАТЕЛИ ({len(users)})</b>\n\n"
+    for u in users[:20]:
+        cnt = count_scripts(u['user_id'])
+        text += f"🆔 <code>{u['user_id']}</code> | @{u.get('username','?')} | 📦{cnt}\n"
+    bot.send_message(message.chat.id, text)
+
+# ========== CALLBACKS ==========
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
     uid = call.from_user.id
     data = call.data
     bot.answer_callback_query(call.id)
-
+    
+    if data == "upload_btn":
+        upload(call.message)
+        return
+    
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    
     if data.startswith("stop:"):
         sid = data.split(":")[1]
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
-        script = conn.execute('SELECT * FROM scripts WHERE id=? AND user_id=?', (sid, uid)).fetchone()
-        if script:
-            if script['status'] == 'running':
-                pid = script.get('pid')
-                if pid:
-                    try:
-                        os.kill(int(pid), signal.SIGTERM)
-                    except:
-                        pass
-                update_script_status(sid, 'stopped')
+        s = conn.execute('SELECT * FROM scripts WHERE id=? AND user_id=?', (sid, uid)).fetchone()
+        if s:
+            if s['status'] == 'running':
+                conn.execute('UPDATE scripts SET status=? WHERE id=?', ('stopped', sid))
             else:
-                new_pid = run_script(script['path'])
-                if new_pid:
-                    update_script_status(sid, 'running', new_pid)
-                else:
-                    update_script_status(sid, 'stopped')
+                pid = run_script(s['path'])
+                if pid:
+                    conn.execute('UPDATE scripts SET status=? WHERE id=?', ('running', sid))
+            conn.commit()
         conn.close()
         hosts(call.message)
-
-    if data.startswith("del:"):
+    
+    elif data.startswith("del:"):
         sid = data.split(":")[1]
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
-        script = conn.execute('SELECT * FROM scripts WHERE id=? AND user_id=?', (sid, uid)).fetchone()
-        if script:
-            pid = script.get('pid')
-            if pid:
-                try:
-                    os.kill(int(pid), signal.SIGTERM)
-                except:
-                    pass
-            delete_script(sid)
-            shutil.rmtree(script['path'], ignore_errors=True)
+        s = conn.execute('SELECT * FROM scripts WHERE id=? AND user_id=?', (sid, uid)).fetchone()
+        if s:
+            conn.execute('DELETE FROM scripts WHERE id=?', (sid,))
+            conn.commit()
+            shutil.rmtree(s['path'], ignore_errors=True)
         conn.close()
         hosts(call.message)
+    else:
+        conn.close()
 
-# ==========================================================
-#  8. ЗАПУСК
-# ==========================================================
+# ========== ЗАПУСК ==========
 if __name__ == '__main__':
-    print("🚀 Ohoster Render запущен...")
+    init_db()
+    threading.Thread(target=start_web, daemon=True).start()
+    print(f"🚀 Ohoster Bot | Port: {PORT}")
+    
     while True:
         try:
             bot.infinity_polling(timeout=60, long_polling_timeout=30)
         except Exception as e:
-            print(f"Ошибка: {e}")
-            time.sleep(5)
+            print(f"Error: {e}")
+            time.sleep(10)
             bot.remove_webhook()
             time.sleep(5)
