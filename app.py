@@ -1,10 +1,11 @@
 # ============================================================
-#  Ohoster Hosting Bot (Render Stable Version)
-#  Работает на telebot + веб-сервер для выживания на Render
+#  Ohoster — Professional Hosting Bot
+#  Работает на Render, Web Service, Python 3.10+
 # ============================================================
 
 import telebot
 from telebot import types
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 import sqlite3
 import os
 import sys
@@ -22,7 +23,7 @@ from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ==========================================================
-#  1. НАСТРОЙКИ (Здесь вставь свой НОВЫЙ токен)
+#  1. НАСТРОЙКИ
 # ==========================================================
 TOKEN = "1456462948:AAG2fJ3EYN4Au2byxrxU84RJYeEc9gWHonk"
 ADMIN_IDS = [314148464]
