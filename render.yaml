@@ -1,11 +1,12 @@
 services:
   - type: web
     name: ohoster-bot
-    runtime: python
+    env: python
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
     plan: free
-    autoDeploy: true
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python app.py"
+    autoDeploy: false
     envVars:
-      - key: BOT_TOKEN
-        value: "1456462948:AAG2fJ3EYN4Au2byxrxU84RJYeEc9gWHonk"
+      - key: PORT
+        value: "10000"
