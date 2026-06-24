@@ -1,6 +1,6 @@
 # ============================================================
-#  Ohoster Hosting Bot — РАБОЧАЯ ВЕРСИЯ
-#  Полный код для Render
+#  Ohoster Hosting Bot — ФИНАЛЬНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ
+#  Исправлены ошибки 409 и SQLite
 # ============================================================
 
 import telebot
@@ -22,7 +22,7 @@ from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ==========================================================
-#  1. НАСТРОЙКИ (Токен берётся из Environment Variables)
+#  1. НАСТРОЙКИ
 # ==========================================================
 TOKEN = os.environ.get('BOT_TOKEN', '')
 if not TOKEN:
@@ -47,6 +47,16 @@ for d in [SCRIPTS_DIR, TEMP_DIR]:
 # ==========================================================
 def init_db():
     conn = sqlite3.connect(str(DB_PATH))
+    
+    # Создаём таблицу users с правильным количеством колонок (3 колонки)
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            created_at TEXT
+        )
+    ''')
+    
     conn.execute('''
         CREATE TABLE IF NOT EXISTS scripts (
             id TEXT PRIMARY KEY,
@@ -56,13 +66,6 @@ def init_db():
             status TEXT,
             size INTEGER,
             pid INTEGER,
-            created_at TEXT
-        )
-    ''')
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
             created_at TEXT
         )
     ''')
@@ -103,6 +106,7 @@ def delete_script(sid):
     conn.commit()
     conn.close()
 
+# Запускаем инициализацию БД
 init_db()
 
 # ==========================================================
@@ -152,6 +156,13 @@ def run_script(path):
 bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
 waiting = set()
 
+# ПРИНУДИТЕЛЬНАЯ ОЧИСТКА ВЕБХУКА (чтобы убрать ошибку 409)
+try:
+    bot.remove_webhook()
+    print("✅ Старые вебхуки очищены.")
+except Exception as e:
+    print(f"⚠️ Ошибка при очистке вебхуков: {e}")
+
 # ==========================================================
 #  6. КЛАВИАТУРЫ
 # ==========================================================
@@ -167,8 +178,12 @@ def user_kb():
 @bot.message_handler(commands=['start'])
 def start(message):
     uid = message.from_user.id
+    username = message.from_user.username or "NoUsername"
+    now = datetime.now().isoformat()
+    
     conn = sqlite3.connect(str(DB_PATH))
-    conn.execute('INSERT OR IGNORE INTO users VALUES (?,?)', (uid, message.from_user.username))
+    # ИСПРАВЛЕНА ОШИБКА: вставляем 3 значения, а не 2 (добавлен now)
+    conn.execute('INSERT OR IGNORE INTO users VALUES (?,?,?)', (uid, username, now))
     conn.commit()
     conn.close()
 
