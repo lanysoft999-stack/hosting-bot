@@ -1,6 +1,6 @@
 # ============================================================
-#  Ohoster — Professional Hosting Bot
-#  Работает на Render, Web Service, Python 3.10+
+#  Ohoster Hosting Bot — РАБОЧАЯ ВЕРСИЯ
+#  Полный код для Render
 # ============================================================
 
 import telebot
@@ -17,15 +17,18 @@ import signal
 import time
 import requests
 import threading
-import json
 from datetime import datetime
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ==========================================================
-#  1. НАСТРОЙКИ
+#  1. НАСТРОЙКИ (Токен берётся из Environment Variables)
 # ==========================================================
-TOKEN = "1456462948:AAG2fJ3EYN4Au2byxrxU84RJYeEc9gWHonk"
+TOKEN = os.environ.get('BOT_TOKEN', '')
+if not TOKEN:
+    print("❌ ОШИБКА: Токен не найден! Добавьте BOT_TOKEN в Environment Variables")
+    sys.exit(1)
+
 ADMIN_IDS = [314148464]
 
 FREE_SCRIPTS = 5
