@@ -143,4 +143,4 @@ if __name__ == '__main__':
         try:
             BOT.infinity_polling(timeout=60, long_polling_timeout=30)
         except:
-            time.sleep(10)z
+            time.sleep(10)
