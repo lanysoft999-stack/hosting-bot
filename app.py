@@ -1,11 +1,11 @@
-# app.py - Ohoster Bot (Render Ready)
+,# app.py - Ohoster Bot (Render Ready)
 import telebot
 from telebot import types
 import sqlite3, os, sys, uuid, shutil, zipfile, subprocess, time, requests, threading
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-TOKEN = "1456462948:AAEoNXLuUJF3OwjdF9b1t7aREerbgybFH0o"
+TOKEN = "1456462948:AAHFFCK2lc8eRiQCEyJSefJtv0D1uau-sfQ"
 PORT = int(os.environ.get('PORT', 10000))
 
 for d in ["scripts", "temp"]:
