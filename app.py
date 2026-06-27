@@ -1,4 +1,4 @@
-,# app.py - Ohoster Bot (Render Ready)
+# app.py - Ohoster Bot (Render Ready)
 import telebot
 from telebot import types
 import sqlite3, os, sys, uuid, shutil, zipfile, subprocess, time, requests, threading
