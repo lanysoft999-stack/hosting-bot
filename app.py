@@ -8,19 +8,20 @@ from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 # ==========================================
 # НАСТРОЙКИ БОТА
 # ==========================================
-# Теперь токен берется из переменных окружения на Render (безопасно)
-BOT_TOKEN = os.getenv('BOT_TOKEN', '8974171870:AAHB4rwB2SM5hkflzD3BZC94qm7N6Mj0ccE')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8974171870:AAGKKrUWILX8ugvsHMVTnbrhY-d4TgF5Ru8')
 ADMIN_ID = int(os.getenv('ADMIN_ID', 314148464))
 
 bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
 
 # ==========================================
-# БАЗА ДАННЫХ
+# БАЗА ДАННЫХ (SQLite)
 # ==========================================
 def init_db():
     conn = sqlite3.connect('shop_data.db')
     cur = conn.cursor()
+    
+    # Пользователи
     cur.execute('''
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
@@ -31,6 +32,7 @@ def init_db():
         purchases INTEGER DEFAULT 0
     )''')
     
+    # Категории
     cur.execute('''
     CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,6 +42,7 @@ def init_db():
         is_hidden INTEGER DEFAULT 0
     )''')
     
+    # Подкатегории
     cur.execute('''
     CREATE TABLE IF NOT EXISTS subcategories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,6 +51,7 @@ def init_db():
         FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE CASCADE
     )''')
     
+    # Товары
     cur.execute('''
     CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,6 +64,7 @@ def init_db():
         file_id TEXT DEFAULT '' 
     )''')
     
+    # Заказы
     cur.execute('''
     CREATE TABLE IF NOT EXISTS orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,6 +77,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+# ================= ФУНКЦИИ БАЗЫ =================
 def db_add_user(user_id, first_name, username):
     conn = sqlite3.connect('shop_data.db')
     cur = conn.cursor()
@@ -187,6 +193,8 @@ def db_add_purchase(user_id, product_name, price):
 # ==========================================
 # КЛАВИАТУРЫ
 # ==========================================
+
+# Главное меню для всех (Reply)
 def welcome_keyboard():
     kb = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     kb.add(KeyboardButton("▶️ Перейти в магазин"))
@@ -194,6 +202,17 @@ def welcome_keyboard():
     kb.add(KeyboardButton("👮 Поддержка"))
     return kb
 
+# Главное меню для АДМИНА (Reply - добавляется кнопка админа)
+def admin_welcome_keyboard():
+    kb = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    kb.add(KeyboardButton("▶️ Перейти в магазин"))
+    kb.row(KeyboardButton("👤 Личный кабинет"), KeyboardButton("💰 Реферальная система"))
+    kb.add(KeyboardButton("👮 Поддержка"))
+    # Специальная кнопка только для админа
+    kb.add(KeyboardButton("⚙️ Панель управления"))
+    return kb
+
+# Кнопки профиля (Inline)
 def profile_inline_keyboard():
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
@@ -203,31 +222,38 @@ def profile_inline_keyboard():
     )
     return kb
 
+# Кнопки магазина (Inline)
 def categories_shop_kb():
     kb = InlineKeyboardMarkup()
     for cat in db_get_categories(include_hidden=False):
         kb.add(InlineKeyboardButton(text=f"📁 {cat[1]}", callback_data=f"shop_cat_{cat[0]}"))
     return kb
 
-def subcategories_shop_kb(cat_id, show_products=False):
-    kb = InlineKeyboardMarkup()
+# Кнопки подкатегорий (или сразу товары)
+def sub_or_products_kb(cat_id):
     subs = db_get_subcategories(cat_id)
+    products = db_get_products(cat_id=cat_id)
+    
+    kb = InlineKeyboardMarkup()
+    
+    # Если есть подкатегории - показываем их
     for sub in subs:
         kb.add(InlineKeyboardButton(text=f"📂 {sub[2]}", callback_data=f"shop_sub_{sub[0]}"))
-    if show_products:
-        kb.add(InlineKeyboardButton(text="📦 Товары этой категории", callback_data=f"shop_cat_prods_{cat_id}"))
+        
+    # Если есть товары прямо в категории - показываем их сразу
+    for prod in products:
+        kb.add(InlineKeyboardButton(text=f"📦 {prod[2]} - {prod[3]}₽", callback_data=f"shop_prod_{prod[0]}"))
+        
     kb.add(InlineKeyboardButton(text="⬅️ К разделам", callback_data="shop_back"))
     return kb
 
-def products_shop_kb(subcat_id=None, cat_id=None):
+def products_shop_kb(subcat_id=None):
     kb = InlineKeyboardMarkup()
-    items = db_get_products(subcat_id=subcat_id, cat_id=cat_id)
+    items = db_get_products(subcat_id=subcat_id)
     for prod in items:
         kb.add(InlineKeyboardButton(text=f"📦 {prod[2]} - {prod[3]}₽", callback_data=f"shop_prod_{prod[0]}"))
     if subcat_id:
         kb.add(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"shop_back_sub_{subcat_id}"))
-    elif cat_id:
-        kb.add(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"shop_back_cat_{cat_id}"))
     return kb
 
 def product_buy_kb(prod_id):
@@ -236,9 +262,13 @@ def product_buy_kb(prod_id):
     kb.add(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"shop_back_prod_{prod_id}"))
     return kb
 
+# ===== АДМИН-КЛАВИАТУРЫ (Расширенные и удобные) =====
 def admin_main_kb():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("📦 Управление товарами"), KeyboardButton("📊 Статистика"))
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton(text="📦 Управление товарами", callback_data="adm_products"),
+        InlineKeyboardButton(text="📊 Статистика", callback_data="adm_stats")
+    )
     return kb
 
 def admin_categories_kb():
@@ -247,6 +277,7 @@ def admin_categories_kb():
         eye = "👁️" if cat[4] == 0 else "🚫"
         kb.add(InlineKeyboardButton(text=f"{eye} {cat[1]}", callback_data=f"adm_cat_{cat[0]}"))
     kb.add(InlineKeyboardButton(text="➕ Создать категорию", callback_data="adm_add_cat"))
+    kb.add(InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="adm_back_menu"))
     return kb
 
 def admin_cat_edit_kb(cat_id):
@@ -265,7 +296,7 @@ def admin_cat_edit_kb(cat_id):
     )
     kb.row(
         InlineKeyboardButton(text="🗑 Удалить", callback_data=f"adm_del_cat_{cat_id}"),
-        InlineKeyboardButton(text="⬅️ Назад", callback_data="adm_back")
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="adm_back_cats")
     )
     return kb
 
@@ -276,30 +307,50 @@ def admin_cat_edit_kb(cat_id):
 def start(message):
     db_add_user(message.chat.id, message.chat.first_name, message.chat.username)
     text = ("Наша команда рада приветствовать вас в нашем боте!\n\nЗдесь вы можете приобрести подписку для нашего приложения NetWing и открыть для себя все его уникальные возможности\n\nЗаходя в этого бота, вы автоматически соглашаетесь с нашими\nПолитикой конфиденциальности & Пользовательским соглашением.")
-    bot.send_message(message.chat.id, text, disable_web_page_preview=True, reply_markup=welcome_keyboard())
+    
+    # Если пользователь - АДМИН, показываем расширенную клавиатуру
+    if message.chat.id == ADMIN_ID:
+        bot.send_message(message.chat.id, text, disable_web_page_preview=True, reply_markup=admin_welcome_keyboard())
+    else:
+        bot.send_message(message.chat.id, text, disable_web_page_preview=True, reply_markup=welcome_keyboard())
 
+@bot.message_handler(func=lambda message: message.text == "⚙️ Панель управления" and message.chat.id == ADMIN_ID)
+def admin_panel(message):
+    bot.send_message(message.chat.id, "⚙️ **Панель управления ботом**\n\nВыберите действие:", parse_mode="Markdown", reply_markup=admin_main_kb())
+
+@bot.callback_query_handler(func=lambda call: call.data == "adm_products" and call.from_user.id == ADMIN_ID)
+def admin_manage_products(call):
+    bot.edit_message_text("📁 Список категорий (для управления):", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_categories_kb())
+
+@bot.callback_query_handler(func=lambda call: call.data == "adm_stats" and call.from_user.id == ADMIN_ID)
+def admin_stats(call):
+    conn = sqlite3.connect('shop_data.db')
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM users")
+    users = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM orders")
+    orders = cur.fetchone()[0]
+    conn.close()
+    bot.edit_message_text(f"📊 **Статистика бота**\n\n👤 Пользователей: {users}\n📦 Заказов: {orders}", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=admin_main_kb())
+
+# --- МАГАЗИН ---
 @bot.message_handler(func=lambda message: message.text == "▶️ Перейти в магазин")
 def go_to_shop(message):
     cats = db_get_categories(include_hidden=False)
     if not cats:
-        bot.send_message(message.chat.id, "❗ Магазин пуст.", reply_markup=welcome_keyboard())
+        bot.send_message(message.chat.id, "❗ Магазин пуст.", reply_markup=welcome_keyboard() if message.chat.id != ADMIN_ID else admin_welcome_keyboard())
         return
     bot.send_message(message.chat.id, "🗂 Выберите раздел:", reply_markup=categories_shop_kb())
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("shop_cat_") and not call.data.startswith("shop_cat_prods_"))
+# --- Обработка магазина (Сразу показывает товары, если они есть) ---
+@bot.callback_query_handler(func=lambda call: call.data.startswith("shop_cat_"))
 def nav_cat(call):
     cat_id = int(call.data.split("_")[2])
     cat = db_get_category(cat_id)
-    has_direct_products = len(db_get_products(cat_id=cat_id)) > 0
     if cat[3]:
-        bot.edit_message_media(chat_id=call.message.chat.id, message_id=call.message.message_id, media=telebot.types.InputMediaPhoto(cat[3], caption=f"📁 **{cat[1]}**\n\n{cat[2]}"), reply_markup=subcategories_shop_kb(cat_id, show_products=has_direct_products))
+        bot.edit_message_media(chat_id=call.message.chat.id, message_id=call.message.message_id, media=telebot.types.InputMediaPhoto(cat[3], caption=f"📁 **{cat[1]}**\n\n{cat[2]}"), reply_markup=sub_or_products_kb(cat_id))
     else:
-        bot.edit_message_text(f"📁 **{cat[1]}**\n\n{cat[2]}", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=subcategories_shop_kb(cat_id, show_products=has_direct_products))
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("shop_cat_prods_"))
-def nav_cat_products(call):
-    cat_id = int(call.data.split("_")[3])
-    bot.edit_message_text("📦 Товары категории:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=products_shop_kb(cat_id=cat_id))
+        bot.edit_message_text(f"📁 **{cat[1]}**\n\n{cat[2]}", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=sub_or_products_kb(cat_id))
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("shop_sub_"))
 def nav_sub(call):
@@ -331,20 +382,10 @@ def back_sub(call):
     if res:
         cat_id = res[0]
         cat = db_get_category(cat_id)
-        has_direct_products = len(db_get_products(cat_id=cat_id)) > 0
         if cat[3]:
-            bot.edit_message_media(chat_id=call.message.chat.id, message_id=call.message.message_id, media=telebot.types.InputMediaPhoto(cat[3], caption=f"📁 **{cat[1]}**\n\n{cat[2]}"), reply_markup=subcategories_shop_kb(cat_id, show_products=has_direct_products))
+            bot.edit_message_media(chat_id=call.message.chat.id, message_id=call.message.message_id, media=telebot.types.InputMediaPhoto(cat[3], caption=f"📁 **{cat[1]}**\n\n{cat[2]}"), reply_markup=sub_or_products_kb(cat_id))
         else:
-            bot.edit_message_text(f"📁 **{cat[1]}**\n\n{cat[2]}", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=subcategories_shop_kb(cat_id, show_products=has_direct_products))
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("shop_back_cat_"))
-def back_cat(call):
-    cat_id = int(call.data.split("_")[3])
-    cat = db_get_category(cat_id)
-    if cat[3]:
-        bot.edit_message_media(chat_id=call.message.chat.id, message_id=call.message.message_id, media=telebot.types.InputMediaPhoto(cat[3], caption=f"📁 **{cat[1]}**\n\n{cat[2]}"), reply_markup=subcategories_shop_kb(cat_id, show_products=True))
-    else:
-        bot.edit_message_text(f"📁 **{cat[1]}**\n\n{cat[2]}", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=subcategories_shop_kb(cat_id, show_products=True))
+            bot.edit_message_text(f"📁 **{cat[1]}**\n\n{cat[2]}", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=sub_or_products_kb(cat_id))
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("shop_back_prod_"))
 def back_prod(call):
@@ -353,7 +394,12 @@ def back_prod(call):
     if prod[1] > 0:
         bot.edit_message_text("📦 Выберите товар:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=products_shop_kb(subcat_id=prod[1]))
     else:
-        bot.edit_message_text("📦 Товары категории:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=products_shop_kb(cat_id=prod[0]))
+        cat_id = prod[0]
+        cat = db_get_category(cat_id)
+        if cat[3]:
+            bot.edit_message_media(chat_id=call.message.chat.id, message_id=call.message.message_id, media=telebot.types.InputMediaPhoto(cat[3], caption=f"📁 **{cat[1]}**\n\n{cat[2]}"), reply_markup=sub_or_products_kb(cat_id))
+        else:
+            bot.edit_message_text(f"📁 **{cat[1]}**\n\n{cat[2]}", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=sub_or_products_kb(cat_id))
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
 def buy_process(call):
@@ -369,14 +415,15 @@ def buy_process(call):
         bot.send_message(call.message.chat.id, f"✅ Оплата прошла! Ваш ключ: `HESERA-{prod_id}`", parse_mode="Markdown")
     bot.answer_callback_query(call.id)
 
+# --- ПРОФИЛЬ ---
 @bot.message_handler(func=lambda message: message.text == "👤 Личный кабинет")
 def user_profile(message):
     user = db_get_user_profile(message.chat.id)
     if user:
-        text = f"👤 Профиль пользователя\n\n🆔 ID: {user[0]}\n👤 Имя: {user[1]} 🐱\n📅 Регистрация: {user[3]}\n💰 Потрачено всего: {user[4]}₽\n🛒 Покупок: {user[5]}"
+        text = f"👤 Профиль пользователя\n\n🆔 ID: {user[0]}\n👤 Имя: {user[1]}\n📅 Регистрация: {user[3]}\n💰 Потрачено всего: {user[4]}₽\n🛒 Покупок: {user[5]}"
         bot.send_photo(message.chat.id, photo="https://i.imgur.com/your_banner.png", caption=text, parse_mode="HTML", reply_markup=profile_inline_keyboard())
     else:
-        bot.send_message(message.chat.id, "❗ Профиль не найден. Нажмите /start.")
+        bot.send_message(message.chat.id, "❗ Профиль не найден.", reply_markup=welcome_keyboard() if message.chat.id != ADMIN_ID else admin_welcome_keyboard())
 
 @bot.callback_query_handler(func=lambda call: call.data == "my_orders")
 def my_orders(call):
@@ -393,25 +440,17 @@ def back_to_main_profile(call):
 
 @bot.message_handler(func=lambda message: message.text == "💰 Реферальная система")
 def referral_system(message):
-    bot.send_message(message.chat.id, "💰 Раздел в разработке.", reply_markup=welcome_keyboard())
+    bot.send_message(message.chat.id, "💰 Раздел в разработке.", reply_markup=welcome_keyboard() if message.chat.id != ADMIN_ID else admin_welcome_keyboard())
 
 @bot.message_handler(func=lambda message: message.text == "👮 Поддержка")
 def support_chat(message):
-    bot.send_message(message.chat.id, "👮 Раздел в разработке.", reply_markup=welcome_keyboard())
+    bot.send_message(message.chat.id, "👮 Раздел в разработке.", reply_markup=welcome_keyboard() if message.chat.id != ADMIN_ID else admin_welcome_keyboard())
 
 # ==========================================
-# АДМИН-ПАНЕЛЬ
+# АДМИН-ПАНЕЛЬ (Расширенная и удобная)
 # ==========================================
-@bot.message_handler(commands=['admin'])
-def admin_panel(message):
-    if message.chat.id != ADMIN_ID: return
-    bot.send_message(message.chat.id, "⚙️ Панель управления", reply_markup=admin_main_kb())
 
-@bot.message_handler(func=lambda message: message.text == "📦 Управление товарами" and message.chat.id == ADMIN_ID)
-def admin_manage_items(message):
-    bot.send_message(message.chat.id, "📁 Список категорий:", reply_markup=admin_categories_kb())
-
-# === КАТЕГОРИИ ===
+# === Управление категориями ===
 @bot.callback_query_handler(func=lambda call: call.data == "adm_add_cat" and call.from_user.id == ADMIN_ID)
 def admin_add_cat(call):
     user_states[call.from_user.id] = 'add_category_name'
@@ -490,7 +529,7 @@ def admin_del_cat(call):
     db_delete_category(cat_id)
     bot.edit_message_text("🗑 Категория удалена.", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_categories_kb())
 
-# === ПОДКАТЕГОРИИ ===
+# === Управление подкатегориями ===
 @bot.callback_query_handler(func=lambda call: call.data.startswith("adm_add_sub_") and call.from_user.id == ADMIN_ID)
 def admin_add_sub(call):
     cat_id = int(call.data.split("_")[3])
@@ -504,7 +543,7 @@ def admin_finish_sub(message):
     bot.send_message(message.chat.id, f"✅ Подкатегория **{message.text}** добавлена!")
     user_states.pop(message.chat.id, None)
 
-# === ТОВАРЫ ===
+# === Управление товарами ===
 @bot.callback_query_handler(func=lambda call: call.data.startswith("adm_add_prod_") and call.from_user.id == ADMIN_ID)
 def admin_add_prod_start(call):
     cat_id = int(call.data.split("_")[3])
@@ -565,28 +604,21 @@ def admin_add_prod_finish_no_file(message):
     bot.send_message(message.chat.id, f"✅ Товар **{name}** за {price}₽ создан (без файла)!")
     user_states.pop(message.chat.id, None)
 
-# === НАЗАД В АДМИНКЕ ===
-@bot.callback_query_handler(func=lambda call: call.data == "adm_back" and call.from_user.id == ADMIN_ID)
-def admin_back_items(call):
-    bot.edit_message_text("📁 Список категорий:", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_categories_kb())
+# === Навигация в админке ===
+@bot.callback_query_handler(func=lambda call: call.data == "adm_back_cats" and call.from_user.id == ADMIN_ID)
+def admin_back_cats(call):
+    bot.edit_message_text("📁 Список категорий (для управления):", chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=admin_categories_kb())
 
-@bot.message_handler(func=lambda message: message.text == "📊 Статистика" and message.chat.id == ADMIN_ID)
-def admin_stats(message):
-    conn = sqlite3.connect('shop_data.db')
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM users")
-    users = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM orders")
-    orders = cur.fetchone()[0]
-    conn.close()
-    bot.send_message(message.chat.id, f"📊 **Статистика**\n\n👤 Пользователей: {users}\n📦 Заказов: {orders}")
+@bot.callback_query_handler(func=lambda call: call.data == "adm_back_menu" and call.from_user.id == ADMIN_ID)
+def admin_back_menu(call):
+    bot.edit_message_text("⚙️ **Панель управления ботом**\n\nВыберите действие:", chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode="Markdown", reply_markup=admin_main_kb())
 
 # ==========================================
 # ЗАПУСК
 # ==========================================
 if __name__ == "__main__":
     init_db()
-    print("🤖 Бот успешно запущен через app.py!")
+    print("🤖 Бот (Удобная админка + Прямой показ товаров) запущен!")
     while True:
         try:
             bot.polling(none_stop=True)
